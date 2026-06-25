@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Navigation } from '@/components/Navigation';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface Badge {
   name: string;
@@ -68,6 +69,7 @@ export default function ProfilePage() {
   }
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="sticky top-0 z-40 flex items-center justify-between px-6 py-4 bg-white border-b border-zinc-200">
@@ -206,5 +208,6 @@ export default function ProfilePage() {
 
       <Navigation />
     </div>
+    </ErrorBoundary>
   );
 }
