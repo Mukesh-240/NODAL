@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Navigation } from '@/components/Navigation';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface ImpactCard {
@@ -215,8 +214,6 @@ export default function ImpactPage() {
           </Link>
         </section>
       </main>
-
-      <Navigation />
     </div>
     </ErrorBoundary>
   );

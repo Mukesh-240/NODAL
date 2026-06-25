@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Navigation } from '@/components/Navigation';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface Badge {
@@ -205,8 +204,6 @@ export default function ProfilePage() {
           <p className="text-xs text-zinc-600">Coming soon: Unlock exclusive features with XP</p>
         </section>
       </main>
-
-      <Navigation />
     </div>
     </ErrorBoundary>
   );

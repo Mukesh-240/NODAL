@@ -125,12 +125,15 @@ export async function getDashboardData(city?: SupportedCity) {
   ]);
 
   const resolved = all.filter(i => i.status === 'resolved');
-  const avgResolutionDays = resolved.length > 0
+  // Only rows with a real resolved_at can be timed — otherwise new Date(null)
+  // is epoch 1970 and the average goes wildly negative.
+  const timed = resolved.filter(i => i.resolved_at);
+  const avgResolutionDays = timed.length > 0
     ? Math.round(
-        resolved.reduce((sum, i) => {
+        timed.reduce((sum, i) => {
           const days = (new Date(i.resolved_at!).getTime() - new Date(i.created_at).getTime()) / (1000 * 60 * 60 * 24);
           return sum + days;
-        }, 0) / resolved.length
+        }, 0) / timed.length
       )
     : 0;
 
