@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production build
+.next/
+out/
+
+# Environment — NEVER COMMIT
+.env.local
+.env*.local
+
+# Debug logs
+npm-debug.log*
+
+# OS
+.DS_Store
+*.pem
+
+# Next.js
+.vercel
+*.tsbuildinfo
+next-env.d.ts
