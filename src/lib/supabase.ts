@@ -209,7 +209,9 @@ export async function upsertCivicUser(sessionId: string, city?: SupportedCity): 
 }
 
 export async function getLeaderboard(): Promise<CivicUser[]> {
-  const { data, error } = await supabase
+  // civic_users RLS is service-role-only, so this must use the admin client
+  // (only ever called server-side from /api/leaderboard).
+  const { data, error } = await supabaseAdmin
     .from('civic_users')
     .select('*')
     .order('total_points', { ascending: false })

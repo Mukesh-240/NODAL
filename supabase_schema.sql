@@ -89,17 +89,29 @@ ALTER TABLE issues      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE civic_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE routing_log ENABLE ROW LEVEL SECURITY;
 
--- issues: anyone can read, only server (service role) can write
-CREATE POLICY "Public read issues"
-  ON issues FOR SELECT USING (TRUE);
+-- 2. Issues: Anyone can READ (public civic data)
+--    Only service role can INSERT/UPDATE/DELETE
+CREATE POLICY "Public can read issues"
+  ON issues FOR SELECT
+  USING (true);
 
--- civic_users: anyone can read leaderboard, only server can write
-CREATE POLICY "Public read civic_users"
-  ON civic_users FOR SELECT USING (TRUE);
+CREATE POLICY "Service role can insert issues"
+  ON issues FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
 
--- routing_log: public read for transparency, only server can write
-CREATE POLICY "Public read routing_log"
-  ON routing_log FOR SELECT USING (TRUE);
+CREATE POLICY "Service role can update issues"
+  ON issues FOR UPDATE
+  USING (auth.role() = 'service_role');
+
+-- 3. Civic users: Users can only see their own data (assuming id is user_id)
+CREATE POLICY "Users see own profile"
+  ON civic_users FOR SELECT
+  USING (auth.uid()::text = id OR auth.role() = 'service_role');
+
+-- 4. Routing log: Service role only (audit trail)
+CREATE POLICY "Service role only routing log"
+  ON routing_log FOR ALL
+  USING (auth.role() = 'service_role');
 
 
 -- ── SEED DATA: 15 Demo Issues ─────────────────────────────────────────────────
