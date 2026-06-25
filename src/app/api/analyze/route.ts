@@ -16,7 +16,7 @@ import { sanitizeForLogging } from '@/lib/logger';
 import { analyzeImage, draftDispatch, validateImageInput } from '@/lib/gemini';
 import { routeIssue, generateTrackingCode, isInIndia, getCityOfficialsCC, routingMatrix } from '@/lib/routingMatrix';
 import { insertIssue, uploadIssueImage, upsertCivicUser } from '@/lib/supabase';
-import { sendConfirmationEmail } from '@/lib/email';
+import { sendConfirmationEmail, sendDispatchViaResend } from '@/lib/email';
 import { sendGmailDispatch } from '@/lib/gmail';
 import { AnalyzeRequest, AnalyzeResponse } from '@/types';
 
@@ -298,25 +298,29 @@ export async function POST(request: NextRequest) {
     const tag = (intended: string, b: string) =>
       sink ? `[DEMO — intended recipient: ${intended}]\n\n${b}` : b;
 
+    // Transport switch: send from the citizen's Gmail if they authorized it,
+    // otherwise fall back to a server-side Resend send (so the dispatch still
+    // fires for anyone — e.g. judges who can't be Google test users).
+    const sendDispatch = (to: string, subject: string, body: string, cc?: string[]) =>
+      gmailAccessToken
+        ? sendGmailDispatch({ accessToken: gmailAccessToken, from: citizenEmail, to, cc, subject, body })
+        : sendDispatchViaResend({ to, cc, subject, body, replyTo: citizenEmail });
+
     // Fire Email 1 (Formal Notice), Email 2 (RTI Application), and Email 3 (Resend Confirmation) in parallel
     const emailPromises: Promise<any>[] = [
       // 1. Formal Notice to Department Head (CC: Commissioner + District Collector)
-      sendGmailDispatch({
-        accessToken: gmailAccessToken,
-        from: citizenEmail,
-        to: deptTo,
-        cc: deptCc,
-        subject: dispatch.subject,
-        body: tag(`${route.department.email} (cc: ${ccOfficials.join(', ')})`, dispatch.emailNotice),
-      }),
+      sendDispatch(
+        deptTo,
+        dispatch.subject,
+        tag(`${route.department.email} (cc: ${ccOfficials.join(', ')})`, dispatch.emailNotice),
+        deptCc,
+      ),
       // 2. RTI Application to PIO (falls back to department email)
-      sendGmailDispatch({
-        accessToken: gmailAccessToken,
-        from: citizenEmail,
-        to: deptTo,
-        subject: `[RTI Act 2005] Application under Section 6(1) — Ref: ${trackingCode!}`,
-        body: tag(route.department.email, dispatch.rtiApplication),
-      }),
+      sendDispatch(
+        deptTo,
+        `[RTI Act 2005] Application under Section 6(1) — Ref: ${trackingCode!}`,
+        tag(route.department.email, dispatch.rtiApplication),
+      ),
       // 3. Resend Confirmation to Citizen
       sendConfirmationEmail({
         to: citizenEmail,
@@ -331,13 +335,11 @@ export async function POST(request: NextRequest) {
     // 4. RPWD Grievance to Accessibility Officer (if accessibility violation detected)
     if (analysis.rpwdViolation && dispatch.rpwdComplaint) {
       emailPromises.push(
-        sendGmailDispatch({
-          accessToken: gmailAccessToken,
-          from: citizenEmail,
-          to: accTo,
-          subject: `[RPWD Act 2016] Section 40 Accessibility Complaint — Ref: ${trackingCode!}`,
-          body: tag(accReal, dispatch.rpwdComplaint),
-        })
+        sendDispatch(
+          accTo,
+          `[RPWD Act 2016] Section 40 Accessibility Complaint — Ref: ${trackingCode!}`,
+          tag(accReal, dispatch.rpwdComplaint),
+        )
       );
     }
 

@@ -11,6 +11,26 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM_EMAIL || 'nodal@civic.app';
 const BASE_URL = process.env.NODAL_BASE_URL || 'https://nodal.vercel.app';
 
+// Plain dispatch via Resend — fallback for when the citizen hasn't authorized
+// Gmail (e.g. a judge who can't be a Google test user). Reply-to is set to the
+// citizen so any department reply routes back to them.
+export async function sendDispatchViaResend(params: {
+  to: string;
+  cc?: string[];
+  subject: string;
+  body: string;
+  replyTo?: string;
+}) {
+  await resend.emails.send({
+    from: FROM,
+    to: params.to,
+    cc: params.cc,
+    replyTo: params.replyTo,
+    subject: params.subject,
+    text: params.body,
+  });
+}
+
 interface SendConfirmationEmailParams {
   to: string;
   trackingCode: string;
