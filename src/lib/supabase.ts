@@ -48,10 +48,15 @@ export async function getIssues(filters?: { city?: SupportedCity; status?: strin
 }
 
 export async function getIssueById(id: string): Promise<Issue | null> {
+  // Strip anything that isn't part of a UUID or tracking code (NDL-CHN-12345)
+  // before interpolating into the PostgREST filter — prevents filter injection.
+  const safeId = id.replace(/[^A-Za-z0-9-]/g, '');
+  if (!safeId) return null;
+
   const { data, error } = await supabase
     .from('issues')
     .select('*')
-    .or(`id.eq.${id},tracking_code.eq.${id}`)
+    .or(`id.eq.${safeId},tracking_code.eq.${safeId}`)
     .single();
 
   if (error) return null;

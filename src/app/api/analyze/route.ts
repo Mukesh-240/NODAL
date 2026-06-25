@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { sanitizeForLogging } from '@/lib/logger';
 import { analyzeImage, draftDispatch, validateImageInput } from '@/lib/gemini';
 import { routeIssue, generateTrackingCode, isInIndia, getCityOfficialsCC, routingMatrix } from '@/lib/routingMatrix';
 import { insertIssue, uploadIssueImage, upsertCivicUser } from '@/lib/supabase';
@@ -21,12 +22,24 @@ import { AnalyzeRequest, AnalyzeResponse } from '@/types';
 
 // ── Input Validation Schema (Zod) ─────────────────────────────────────────────
 const AnalyzeRequestSchema = z.object({
-  imageBase64: z.string().min(100, 'Image data is required'),
+  imageBase64: z.string()
+    .min(100, 'Image too small')
+    .max(10_000_000, 'Image too large (max 10MB)')
+    .regex(/^[A-Za-z0-9+/=]+$/, 'Invalid base64'),
   mimeType: z.string().regex(/^image\/(jpeg|jpg|png|webp)$/, 'Invalid image type'),
-  gpsLat: z.number().min(-90).max(90),
-  gpsLng: z.number().min(-180).max(180),
-  citizenEmail: z.string().email('Valid email is required'),
-  gmailAccessToken: z.string().min(1, 'Gmail access token is required'),
+  gpsLat: z.number()
+    .min(6.0, 'Outside India bounds')
+    .max(37.1, 'Outside India bounds'),
+  gpsLng: z.number()
+    .min(68.0, 'Outside India bounds')
+    .max(97.4, 'Outside India bounds'),
+  citizenEmail: z.string()
+    .email('Invalid email')
+    .max(254, 'Email too long')
+    .optional(),
+  gmailAccessToken: z.string()
+    .max(2048, 'Token too long')
+    .optional(),
   reporterSession: z.string().uuid('Invalid session ID'),
 });
 
@@ -73,13 +86,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Size check first (before parsing JSON)
+  const contentLength = request.headers.get('content-length');
+  if (contentLength && parseInt(contentLength) > 15_000_000) {
+    return NextResponse.json(
+      { success: false, error: 'Request too large' },
+      { status: 413 }
+    );
+  }
+
   let body: AnalyzeRequest;
 
   // ── Input Validation ────────────────────────────────────────────────────────
   try {
     const raw = await request.json();
+    console.log('Request received:', sanitizeForLogging(raw));
     body = AnalyzeRequestSchema.parse(raw) as AnalyzeRequest;
   } catch (err) {
+    console.error('[analyze] validation failed:', sanitizeForLogging(err));
     return NextResponse.json(
       { success: false, error: 'Invalid request data. Please check your input.' },
       { status: 400 }
