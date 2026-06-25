@@ -2,8 +2,47 @@
 
 import { useState, useRef } from 'react';
 import Link from 'next/link';
+import Script from 'next/script';
 import { CATEGORY_LABELS, getSeverityLevel, SEVERITY_COLORS, AnalyzeResponse } from '@/types';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+
+// ── Gmail OAuth (Google Identity Services token flow) ─────────────────────────
+// Returns a short-lived access token for the gmail.send scope, or undefined if
+// the user cancels or no client id is configured (graceful fallback: the report
+// still saves, only the official dispatch is skipped).
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let tokenClient: any = null;
+let resolveToken: ((t: string | undefined) => void) | null = null;
+
+function requestGmailToken(): Promise<string | undefined> {
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const g = (window as any).google;
+  if (!clientId || !g?.accounts?.oauth2) return Promise.resolve(undefined);
+  if (!tokenClient) {
+    tokenClient = g.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/gmail.send openid email',
+      callback: (resp: any) => { resolveToken?.(resp?.access_token); resolveToken = null; },
+      error_callback: () => { resolveToken?.(undefined); resolveToken = null; },
+    });
+  }
+  return new Promise((resolve) => {
+    resolveToken = resolve;
+    tokenClient.requestAccessToken(); // must stay in the click gesture (no await before this)
+  });
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+async function fetchGoogleEmail(token: string): Promise<string | undefined> {
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return r.ok ? (await r.json()).email : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 // Persistent anonymous session id (used for points / civic_users).
 function getSession(): string {
@@ -73,9 +112,21 @@ function ReportContent() {
 
   async function submit() {
     if (!file) return;
-    setPhase('working');
     setError('');
+    // Request the Gmail token first — requestAccessToken must run inside the
+    // click gesture (before any await) or the popup gets blocked.
+    const tokenPromise = requestGmailToken();
+    setPhase('working');
     try {
+      setStatusMsg('Authorizing Gmail (optional)...');
+      const token = await tokenPromise;
+
+      let emailToUse = email.trim();
+      if (token && !emailToUse) {
+        emailToUse = (await fetchGoogleEmail(token)) || '';
+        if (emailToUse) setEmail(emailToUse);
+      }
+
       setStatusMsg('Getting your location...');
       const pos = await getPosition();
 
@@ -91,7 +142,8 @@ function ReportContent() {
           mimeType,
           gpsLat: pos.coords.latitude,
           gpsLng: pos.coords.longitude,
-          citizenEmail: email.trim() || undefined,
+          citizenEmail: emailToUse || undefined,
+          gmailAccessToken: token || undefined,
           reporterSession: getSession(),
         }),
       });
@@ -122,6 +174,7 @@ function ReportContent() {
 
   return (
     <div className="min-h-screen bg-white">
+      <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
       <header className="px-8 pt-10 pb-6">
         <h1 className="text-4xl font-bold text-black tracking-tight">NODAL</h1>
         <p className="text-zinc-600 mt-1">Snap a civic issue. We classify it, route it to the right department, and file the formal notice.</p>

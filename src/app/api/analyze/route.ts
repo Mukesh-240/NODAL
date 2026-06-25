@@ -260,24 +260,36 @@ export async function POST(request: NextRequest) {
     // CC officials list
     const ccOfficials = getCityOfficialsCC(route.city);
 
+    // Demo-safe routing: if DISPATCH_TEST_INBOX is set, redirect every dispatch
+    // to that one controlled inbox (and drop the CC) so nothing reaches the
+    // unverified gov addresses. The intended real recipient is tagged in the
+    // body. Empty var = live mode using the routing-matrix addresses.
+    const sink = process.env.DISPATCH_TEST_INBOX;
+    const accReal = routingMatrix[route.city]['broken_ramp_accessibility'].email;
+    const deptTo = sink || route.department.email;
+    const deptCc = sink ? undefined : ccOfficials;
+    const accTo = sink || accReal;
+    const tag = (intended: string, b: string) =>
+      sink ? `[DEMO — intended recipient: ${intended}]\n\n${b}` : b;
+
     // Fire Email 1 (Formal Notice), Email 2 (RTI Application), and Email 3 (Resend Confirmation) in parallel
     const emailPromises: Promise<any>[] = [
       // 1. Formal Notice to Department Head (CC: Commissioner + District Collector)
       sendGmailDispatch({
         accessToken: gmailAccessToken,
         from: citizenEmail,
-        to: route.department.email,
-        cc: ccOfficials,
+        to: deptTo,
+        cc: deptCc,
         subject: dispatch.subject,
-        body: dispatch.emailNotice,
+        body: tag(`${route.department.email} (cc: ${ccOfficials.join(', ')})`, dispatch.emailNotice),
       }),
       // 2. RTI Application to PIO (falls back to department email)
       sendGmailDispatch({
         accessToken: gmailAccessToken,
         from: citizenEmail,
-        to: route.department.email,
+        to: deptTo,
         subject: `[RTI Act 2005] Application under Section 6(1) — Ref: ${trackingCode!}`,
-        body: dispatch.rtiApplication,
+        body: tag(route.department.email, dispatch.rtiApplication),
       }),
       // 3. Resend Confirmation to Citizen
       sendConfirmationEmail({
@@ -292,14 +304,13 @@ export async function POST(request: NextRequest) {
 
     // 4. RPWD Grievance to Accessibility Officer (if accessibility violation detected)
     if (analysis.rpwdViolation && dispatch.rpwdComplaint) {
-      const accessibilityEmail = routingMatrix[route.city]['broken_ramp_accessibility'].email;
       emailPromises.push(
         sendGmailDispatch({
           accessToken: gmailAccessToken,
           from: citizenEmail,
-          to: accessibilityEmail,
+          to: accTo,
           subject: `[RPWD Act 2016] Section 40 Accessibility Complaint — Ref: ${trackingCode!}`,
-          body: dispatch.rpwdComplaint,
+          body: tag(accReal, dispatch.rpwdComplaint),
         })
       );
     }
