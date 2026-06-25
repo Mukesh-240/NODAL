@@ -66,6 +66,23 @@ function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
   return { allowed: true, remaining: RATE_LIMIT - entry.count };
 }
 
+// ── Global daily cap (hard ceiling on Gemini spend) ───────────────────────────
+// The per-IP limiter throttles one abuser; this bounds TOTAL paid analyses per
+// day so the project can't run up a surprise bill regardless of how many IPs hit it.
+// ponytail: in-memory per-instance; set Cloud Run --max-instances low so the
+// effective cap is GLOBAL_DAILY_CAP × instances. Move to a shared store only if
+// you run many instances.
+const GLOBAL_DAILY_CAP = Number(process.env.MAX_DAILY_ANALYSES) || 100;
+let globalDay = { date: '', count: 0 };
+
+function withinGlobalCap(): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  if (globalDay.date !== today) globalDay = { date: today, count: 0 };
+  if (globalDay.count >= GLOBAL_DAILY_CAP) return false;
+  globalDay.count++;
+  return true;
+}
+
 // ── Tool Execution Logger ─────────────────────────────────────────────────────
 function logTool(tool: string, status: 'start' | 'done' | 'error', durationMs?: number) {
   const emoji = status === 'start' ? '🔧' : status === 'done' ? '✅' : '❌';
@@ -125,6 +142,15 @@ export async function POST(request: NextRequest) {
   const imageValidation = validateImageInput(mimeType, imageSizeBytes);
   if (!imageValidation.valid) {
     return NextResponse.json({ success: false, error: imageValidation.error }, { status: 400 });
+  }
+
+  // Hard daily ceiling on paid analyses — checked only after validation so junk
+  // requests don't burn the cap.
+  if (!withinGlobalCap()) {
+    return NextResponse.json(
+      { success: false, error: 'NODAL has reached today’s capacity. Please try again tomorrow.' },
+      { status: 429 }
+    );
   }
 
   const issueId = crypto.randomUUID();
