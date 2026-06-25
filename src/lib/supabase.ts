@@ -231,12 +231,13 @@ export async function uploadIssueImage(
   const fileName = `${issueId}.${ext}`;
   const buffer = Buffer.from(imageBase64, 'base64');
 
+  // Bucket name is case-sensitive; the provisioned bucket is "Issues".
   const { error } = await supabaseAdmin.storage
-    .from('issues')
+    .from('Issues')
     .upload(fileName, buffer, { contentType: mimeType, upsert: true });
 
   if (error) throw new Error(`Image upload failed: ${error.message}`);
 
-  const { data } = supabaseAdmin.storage.from('issues').getPublicUrl(fileName);
+  const { data } = supabaseAdmin.storage.from('Issues').getPublicUrl(fileName);
   return data.publicUrl;
 }
