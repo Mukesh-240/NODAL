@@ -38,6 +38,9 @@ function TrackContent() {
   const [error, setError] = useState('');
   const [resolving, setResolving] = useState(false);
   const [resolveMsg, setResolveMsg] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState('');
 
   // Citizen-confirmed resolution (item 6) — only the original reporter can mark
   // this; the server validates the session against the stored reporter_session.
@@ -64,6 +67,33 @@ function TrackContent() {
     }
   }
 
+  // Reporter-only self-serve deletion (data-deletion promise). Irreversible —
+  // confirm first; the server validates the session against reporter_session.
+  async function deleteReport() {
+    if (!issue) return;
+    if (!window.confirm('Permanently delete this report and its photo? This cannot be undone.')) return;
+    setDeleting(true);
+    setDeleteMsg('');
+    try {
+      const res = await fetch('/api/issues/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: issue.tracking_code, reporterSession: getSession() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setDeleteMsg(data.error || 'Could not delete this report.');
+      } else {
+        setDeleted(true);
+        setIssue(null);
+      }
+    } catch {
+      setDeleteMsg('Could not delete this report. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function lookup(rawCode: string) {
     const trimmed = rawCode.trim();
     if (trimmed.length < 3) {
@@ -73,6 +103,8 @@ function TrackContent() {
     setLoading(true);
     setError('');
     setIssue(null);
+    setDeleted(false);
+    setDeleteMsg('');
     try {
       const res = await fetch(`/api/track?code=${encodeURIComponent(trimmed)}`);
       const data = await res.json();
@@ -212,6 +244,34 @@ function TrackContent() {
                 )}
               </div>
             )}
+
+            {/* Reporter-only data deletion (backs the /data-deletion promise) */}
+            <div className="mt-md pt-md border-t border-outline-variant">
+              <button
+                onClick={deleteReport}
+                disabled={deleting}
+                className="w-full h-11 rounded-full hairline-all text-error font-headline-md text-[14px] flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform"
+              >
+                <span className="material-symbols-outlined text-[18px]">delete</span>
+                {deleting ? 'Deleting…' : 'Delete this report'}
+              </button>
+              <p className="font-body-md text-[11px] text-on-surface-variant text-center mt-2">
+                Only the original reporter can delete. This erases the report and its photo permanently.
+              </p>
+              {deleteMsg && (
+                <p className="font-body-md text-[12px] text-error text-center mt-1">{deleteMsg}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {deleted && !loading && (
+          <div className="animate-fade-up bg-surface hairline-all rounded-xl p-lg text-center">
+            <span className="material-symbols-outlined text-[28px] text-primary">check_circle</span>
+            <p className="font-headline-md text-[16px] text-primary mt-2">Report deleted</p>
+            <p className="font-body-md text-[13px] text-on-surface-variant mt-1">
+              The report and its photo have been permanently removed.
+            </p>
           </div>
         )}
       </main>

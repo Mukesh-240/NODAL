@@ -15,7 +15,7 @@ import {
   SupportedCity,
 } from '@/types';
 import { getSession } from '@/lib/session';
-import { detectCityFromGPS } from '@/lib/routingMatrix';
+import { detectCityFromGPS, cityCenter } from '@/lib/routingMatrix';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const CITIES: SupportedCity[] = ['Chennai', 'Bengaluru', 'Mumbai', 'Delhi'];
@@ -69,8 +69,10 @@ function getPosition(): Promise<GeolocationPosition> {
 // our bounding boxes; ward/area from Nominatim. Always resolves to something so
 // the confirmation card can render even if the network call fails.
 // ponytail: client Nominatim, no key; honors their public rate limit at demo scale.
-async function reverseGeocode(lat: number, lng: number): Promise<{ address: string; city: SupportedCity; ward: string }> {
-  const city = (detectCityFromGPS(lat, lng) || 'Chennai') as SupportedCity;
+async function reverseGeocode(lat: number, lng: number): Promise<{ address: string; city: SupportedCity | null; ward: string }> {
+  // null when GPS lands outside our 4 supported cities — caller drops to the
+  // manual picker rather than silently defaulting to Chennai (a wrong guess).
+  const city = detectCityFromGPS(lat, lng);
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`);
     if (r.ok) {
@@ -91,7 +93,7 @@ interface DetectedLocation {
   lat: number;
   lng: number;
   address: string;
-  city: SupportedCity;
+  city: SupportedCity | ''; // '' until the user picks one in the manual fallback
   ward: string;
   gpsOk: boolean;
 }
@@ -137,24 +139,33 @@ function ReportContent() {
   async function detectLocation() {
     setLocating(true);
     setError('');
-    let lat = 13.0827, lng = 80.2707, gpsOk = false;
     try {
       const pos = await getPosition();
-      lat = pos.coords.latitude;
-      lng = pos.coords.longitude;
-      gpsOk = true;
-    } catch {
-      // GPS denied/unavailable (e.g. phone on non-HTTPS LAN). Fall back to Chennai
-      // centre — the user can correct the city/ward manually on the next card.
+      const lat = pos.coords.latitude, lng = pos.coords.longitude;
+      const geo = await reverseGeocode(lat, lng);
+      if (geo.city) {
+        setLoc({ lat, lng, address: geo.address, city: geo.city, ward: geo.ward, gpsOk: true });
+      } else {
+        // GPS worked but we're outside the supported cities — don't guess Chennai.
+        console.warn('[gps] location outside supported cities — manual pick required');
+        setLoc({ lat: 0, lng: 0, address: '', city: '', ward: '', gpsOk: false });
+      }
+    } catch (err) {
+      // GPS denied/unavailable (e.g. phone on non-HTTPS LAN, or http://localhost).
+      // Do NOT fabricate a location — drop into an honest manual picker with empty
+      // fields. Coords are derived from the city the user picks, at submit time.
+      console.warn('[gps] getCurrentPosition failed:', (err as Error)?.message);
+      setLoc({ lat: 0, lng: 0, address: '', city: '', ward: '', gpsOk: false });
     }
-    const geo = await reverseGeocode(lat, lng);
-    setLoc({ lat, lng, ...geo, gpsOk });
     setLocating(false);
     setPhase('confirm');
   }
 
   async function submit() {
-    if (!file || !loc) return;
+    if (!file || !loc || !loc.city || !loc.ward.trim()) return;
+    // GPS failed → use the chosen city's centre so the API's in-bounds check and
+    // stored coords stay consistent with the manual selection (ward override routes).
+    const { lat, lng } = loc.gpsOk ? { lat: loc.lat, lng: loc.lng } : cityCenter(loc.city);
     setError('');
     setStep(0);
     setPhase('working');
@@ -171,8 +182,8 @@ function ReportContent() {
         body: JSON.stringify({
           imageBase64: base64,
           mimeType,
-          gpsLat: loc.lat,
-          gpsLng: loc.lng,
+          gpsLat: lat,
+          gpsLng: lng,
           citizenEmail: email.trim() || undefined,
           reporterSession: getSession(),
           cityOverride: loc.city,
@@ -427,11 +438,15 @@ function ReportContent() {
               <p className="font-body-md text-[13px] text-on-surface-variant mb-md">
                 {loc.gpsOk
                   ? 'We detected this from your GPS. Correct it if the city or ward is wrong — it decides which department gets the notice.'
-                  : 'We couldn’t read your GPS, so we’ve guessed. Please set the correct city and ward below.'}
+                  : 'We couldn’t read your GPS. Select your city and ward below — this decides which department gets the notice.'}
               </p>
 
-              <p className="font-label-caps text-label-caps uppercase text-on-surface-variant">Detected address</p>
-              <p className="font-body-md text-[14px] text-primary mb-md">{loc.address}</p>
+              {loc.gpsOk && (
+                <>
+                  <p className="font-label-caps text-label-caps uppercase text-on-surface-variant">Detected address</p>
+                  <p className="font-body-md text-[14px] text-primary mb-md">{loc.address}</p>
+                </>
+              )}
 
               <label className="font-label-caps text-label-caps uppercase text-on-surface-variant">City</label>
               <select
@@ -439,6 +454,7 @@ function ReportContent() {
                 onChange={(e) => setLoc({ ...loc, city: e.target.value as SupportedCity })}
                 className="w-full h-12 px-md rounded-xl bg-surface-container-lowest hairline-all text-primary font-body-md mb-md mt-1 focus:outline-none focus:border-primary transition-colors"
               >
+                <option value="" disabled>Select city</option>
                 {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
 
@@ -459,9 +475,10 @@ function ReportContent() {
                 </button>
                 <button
                   onClick={submit}
-                  className="flex-1 h-12 rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+                  disabled={!loc.city || !loc.ward.trim()}
+                  className="flex-1 h-12 rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
                 >
-                  Looks right — file report
+                  {loc.gpsOk ? 'Looks right — file report' : 'File report'}
                 </button>
               </div>
             </div>

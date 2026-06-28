@@ -190,7 +190,9 @@ Rules:
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
-    const subject = `[${trackingCode}] ${severityLabel}: ${analysis.description} — ${route.ward}, ${route.city}`;
+    // Tracking code stays OUT of the subject — it lives in the notice footer
+    // (buildLegalFooter) only, so the dispatch reads like a real citizen complaint.
+    const subject = `Urgent Remedial Action Required for ${analysis.description} in ${route.ward}, ${route.city}`;
 
     return {
       subject,

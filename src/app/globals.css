@@ -1,4 +1,8 @@
 @import "tailwindcss";
+/* Leaflet base CSS loaded globally — importing it only inside the
+   dynamic(ssr:false) HeatmapComponent left it unapplied, so the map tiles
+   rendered with no layout (map appeared blank/missing). */
+@import "leaflet/dist/leaflet.css";
 
 :root {
   --background: #fdf8f8;

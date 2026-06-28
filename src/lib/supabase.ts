@@ -63,6 +63,21 @@ export async function updateIssueStatus(idOrCode: string, status: IssueStatus): 
   if (error) throw new Error(`Failed to update status: ${error.message}`);
 }
 
+// Permanently delete an issue and its uploaded image. Used by the reporter-only
+// self-serve deletion (data-deletion promise). Service-role only (RLS). The image
+// removal is best-effort — a missing object must not block deleting the record.
+export async function deleteIssue(issue: Pick<Issue, 'id' | 'image_url'>): Promise<void> {
+  const marker = '/Issues/';
+  const idx = issue.image_url?.indexOf(marker) ?? -1;
+  if (idx >= 0) {
+    const path = decodeURIComponent(issue.image_url.slice(idx + marker.length));
+    const { error } = await supabaseAdmin.storage.from('Issues').remove([path]);
+    if (error) console.warn(`[deleteIssue] image remove failed (${path}):`, error.message);
+  }
+  const { error } = await supabaseAdmin.from('issues').delete().eq('id', issue.id);
+  if (error) throw new Error(`Failed to delete issue: ${error.message}`);
+}
+
 export async function getIssueById(id: string): Promise<Issue | null> {
   // Strip anything that isn't part of a UUID or tracking code (NDL-CHN-12345)
   // before using it in the filter — prevents injection.

@@ -235,7 +235,7 @@ export async function POST(request: NextRequest) {
     console.error('[draft_dispatch] Error:', err);
     // Non-fatal: generate a basic dispatch if Gemini fails here
     dispatch = {
-      subject: `[${trackingCode}] Civic Issue Report — ${route.city}`,
+      subject: `Urgent Remedial Action Required for Civic Issue in ${route.ward}, ${route.city}`,
       emailNotice: `A civic issue (${analysis.category}) has been reported at ${route.ward}, ${route.city} with severity ${analysis.severity}/10. Please investigate and take necessary remedial action within ${route.department.avgResolutionDays} working days.${buildLegalFooter(analysis, route, trackingCode)}`,
       rtiApplication: `RTI Request under Section 6(1) regarding the civic issue reported at ${route.ward}, ${route.city} (NODAL Tracking Ref: ${trackingCode}). Please provide the status of contract work, budget, and engineers assigned for this street.`,
       rpwdComplaint: analysis.rpwdViolation
@@ -302,6 +302,14 @@ export async function POST(request: NextRequest) {
     // { to: testInbox, cc: [testInbox] }; live → { to: deptEmail, cc: [] } since
     // ward/commissioner have no verified address (never invented).
     const { to: deptTo, cc: deptCc } = resolveSendTargets(chain);
+    // ⚠️  DISPATCH_MODE coupling — if you flip this to "live",
+    // update three pages to remove "test inbox" / "demo" copy:
+    //   src/app/about/page.tsx      → "Honest limitations" section
+    //   src/app/privacy/page.tsx    → "How we use it" section
+    //   src/app/terms/page.tsx      → "What NODAL does" section
+    // In live mode, notices go to real government addresses.
+    // Keep DISPATCH_MODE=demo until domain is verified + you're
+    // ready for real dispatch.
     const demo = chain.mode === 'demo';
     const sink = process.env.DISPATCH_TEST_INBOX || null;
     // RPWD goes to the accessibility desk; demo overrides to the test inbox.

@@ -167,7 +167,7 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
   await resend.emails.send({
     from: FROM,
     to,
-    subject: `[${trackingCode}] Your NODAL civic report — ${route.city}`,
+    subject: `Your NODAL Report: ${analysis.description} in ${route.ward}, ${route.city} — Ref: ${trackingCode}`,
     html,
   });
 }

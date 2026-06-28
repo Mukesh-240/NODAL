@@ -35,6 +35,14 @@ const CITY_BOUNDS: Record<SupportedCity, { minLat: number; maxLat: number; minLn
   Delhi: { minLat: 28.40, maxLat: 28.90, minLng: 76.80, maxLng: 77.40 },
 };
 
+// Midpoint of a city's bounding box. Used when GPS is unavailable and the
+// citizen picks a city manually — the API still requires in-bounds coords, and
+// the explicit ward override drives the actual routing.
+export function cityCenter(city: SupportedCity): { lat: number; lng: number } {
+  const b = CITY_BOUNDS[city];
+  return { lat: (b.minLat + b.maxLat) / 2, lng: (b.minLng + b.maxLng) / 2 };
+}
+
 // ── Routing Matrix ────────────────────────────────────────────────────────────
 // Structure: routingMatrix[city][category] = DepartmentInfo
 type RoutingMatrix = Record<SupportedCity, Record<IssueCategory, DepartmentInfo>>;

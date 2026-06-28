@@ -20,11 +20,19 @@ import {
 import { CATEGORY_LABELS } from '@/types';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
+// Per-issue bar colors (keys are the CATEGORY_LABELS display strings).
+const ISSUE_COLORS: Record<string, string> = {
+  'Damaged Road': '#6B7280',
+  'Waste Dumping': '#F59E0B',
+  'Broken Footpath': '#3B82F6',
+  'Damaged Streetlight': '#10B981',
+};
+
 // Dynamic imports for map (Leaflet requires window)
 const HeatmapComponent = dynamic(() => import('@/components/map/HeatmapComponent'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-96 bg-surface-container flex items-center justify-center text-on-surface-variant font-body-md">
+    <div className="w-full h-96 bg-white flex items-center justify-center text-on-surface-variant font-body-md">
       Loading map...
     </div>
   ),
@@ -98,7 +106,7 @@ function InsightsContent() {
 
   if (loading) {
     return (
-      <main className="w-full h-screen flex flex-col items-center justify-center bg-background">
+      <main className="w-full h-screen flex flex-col items-center justify-center bg-white">
         <div className="text-center animate-fade-in">
           <div className="w-12 h-12 border-4 border-surface-variant border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
           <p className="font-body-md text-on-surface-variant">Loading insights...</p>
@@ -109,7 +117,7 @@ function InsightsContent() {
 
   if (error || !data) {
     return (
-      <main className="w-full h-screen flex flex-col items-center justify-center bg-background">
+      <main className="w-full h-screen flex flex-col items-center justify-center bg-white">
         <div className="text-center max-w-sm px-6 animate-fade-up">
           <span className="material-symbols-outlined text-[48px] text-error">error</span>
           <p className="font-body-md text-on-background mt-3 mb-5">{error || 'No insights data available.'}</p>
@@ -138,8 +146,8 @@ function InsightsContent() {
   }));
 
   return (
-    <div className="min-h-screen bg-background pb-28">
-      <header className="hairline-b px-gutter py-lg flex items-center justify-between sticky top-0 bg-surface/90 backdrop-blur-md z-40">
+    <div className="min-h-screen bg-white pb-28">
+      <header className="hairline-b px-gutter py-lg flex items-center justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10">
         <div>
           <h1 className="font-headline-lg text-headline-lg text-primary tracking-tighter">Dashboard</h1>
           <p className="font-body-md text-[13px] text-on-surface-variant mt-1 flex items-center gap-2">
@@ -166,7 +174,7 @@ function InsightsContent() {
           ].map((s, i) => (
             <div
               key={s.label}
-              className="animate-fade-up bg-surface hairline-all rounded-xl p-lg text-center"
+              className="animate-fade-up bg-white rounded-2xl border border-gray-100 p-4 text-center"
               style={{ animationDelay: `${i * 50}ms` }}
             >
               <p className={`font-stats-tabular text-[32px] font-bold ${s.accent ? 'text-error' : 'text-primary'}`}>{s.value}</p>
@@ -182,11 +190,11 @@ function InsightsContent() {
               <span className="material-symbols-outlined text-error">local_fire_department</span>
               Hotspot Heatmap
             </h2>
-            <span className="font-stats-tabular text-[12px] text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">
+            <span className="font-stats-tabular text-[12px] text-on-surface-variant bg-white border border-gray-100 px-3 py-1 rounded-full">
               {data.stats.totalIssues} issues tracked
             </span>
           </div>
-          <div className="bg-surface hairline-all rounded-xl overflow-hidden h-[400px]">
+          <div className="relative z-0 bg-white rounded-2xl border border-gray-100 overflow-hidden h-[400px]">
             <HeatmapComponent heatmapData={data.heatmapData} />
           </div>
         </section>
@@ -195,17 +203,29 @@ function InsightsContent() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg mb-xl">
           <section>
             <h2 className="font-headline-md text-[18px] text-primary mb-md">Most Common Issues</h2>
-            <div className="bg-surface hairline-all rounded-xl p-lg">
+            <div className="bg-white rounded-2xl border border-gray-100 p-4">
               <ResponsiveContainer width="100%" height={300} minWidth={300}>
-                <BarChart data={displayCategories}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e2e1" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#46464a' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 12, fill: '#46464a' }} axisLine={false} tickLine={false} />
+                <BarChart data={displayCategories} layout="vertical" margin={{ left: 8, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e2e1" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: '#46464a' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={132}
+                    interval={0}
+                    tick={{ fontSize: 11, fill: '#46464a' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
                   <Tooltip
                     cursor={{ fill: '#f1edec' }}
                     contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #c7c6ca', borderRadius: '12px' }}
                   />
-                  <Bar dataKey="value" fill="#000000" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={22}>
+                    {displayCategories.map((entry, index) => (
+                      <Cell key={index} fill={ISSUE_COLORS[entry.name] ?? '#9CA3AF'} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -216,7 +236,7 @@ function InsightsContent() {
               <span className="material-symbols-outlined">trending_up</span>
               Issue Growth Prediction
             </h2>
-            <div className="bg-surface hairline-all rounded-xl p-lg">
+            <div className="bg-white rounded-2xl border border-gray-100 p-4">
               <ResponsiveContainer width="100%" height={300} minWidth={300}>
                 <LineChart data={displayTrends}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e2e1" vertical={false} />
@@ -236,7 +256,7 @@ function InsightsContent() {
         <section className="mb-xl">
           <h2 className="font-headline-md text-[18px] text-primary mb-md">AI Confidence Metrics</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-            <div className="bg-surface hairline-all rounded-xl p-lg">
+            <div className="bg-white rounded-2xl border border-gray-100 p-4">
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie data={confidenceData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value">
@@ -249,7 +269,7 @@ function InsightsContent() {
               </ResponsiveContainer>
             </div>
 
-            <div className="bg-surface hairline-all rounded-xl p-lg flex flex-col gap-3">
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-col gap-3">
               <div className="font-body-md text-[13px] text-on-surface-variant mb-1">
                 Gemini classification accuracy by category:
               </div>

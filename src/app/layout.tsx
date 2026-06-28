@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist, Geist_Mono, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Navigation } from "@/components/Navigation";
@@ -43,7 +44,18 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
       </head>
       <body className="min-h-full flex flex-col pb-24" suppressHydrationWarning>
-        {children}
+        <div className="flex-1">{children}</div>
+        <footer className="px-gutter pb-lg pt-md">
+          <nav className="max-w-[680px] mx-auto flex flex-wrap items-center justify-center gap-x-md gap-y-2 text-on-surface-variant font-body-md text-[13px]">
+            <Link href="/about" className="hover:text-primary transition-colors">About</Link>
+            <span aria-hidden className="opacity-40">·</span>
+            <Link href="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
+            <span aria-hidden className="opacity-40">·</span>
+            <Link href="/terms" className="hover:text-primary transition-colors">Terms</Link>
+            <span aria-hidden className="opacity-40">·</span>
+            <Link href="/data-deletion" className="hover:text-primary transition-colors">Data Deletion</Link>
+          </nav>
+        </footer>
         <Navigation />
       </body>
     </html>
