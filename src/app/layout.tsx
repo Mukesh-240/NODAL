@@ -53,6 +53,8 @@ export default function RootLayout({
           <nav className="max-w-[680px] mx-auto flex flex-wrap items-center justify-center gap-x-md gap-y-2 text-on-surface-variant font-body-md text-[13px]">
             <Link href="/about" className="hover:text-primary transition-colors">About</Link>
             <span aria-hidden className="opacity-40">·</span>
+            <Link href="/escalate" className="hover:text-primary transition-colors">Escalation Guide</Link>
+            <span aria-hidden className="opacity-40">·</span>
             <Link href="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
             <span aria-hidden className="opacity-40">·</span>
             <Link href="/terms" className="hover:text-primary transition-colors">Terms</Link>

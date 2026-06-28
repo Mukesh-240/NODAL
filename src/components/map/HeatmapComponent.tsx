@@ -9,6 +9,24 @@ interface HeatmapProps {
   heatmapData: [number, number, number][];
 }
 
+// Mainland India bounding box — the map is locked to this so it can't be panned
+// or zoomed out into the ocean / neighbouring countries.
+const INDIA_BOUNDS: [[number, number], [number, number]] = [
+  [6.4627, 68.1097],   // SW corner
+  [35.6745, 97.3953],  // NE corner
+];
+
+// Fit the viewport to India on mount. Placed before HeatLayer so that when there
+// IS data, HeatLayer's later fitBounds to the data points wins; with no data the
+// map stays framed on the country.
+function FitIndia() {
+  const map = useMap();
+  useEffect(() => {
+    map.fitBounds(INDIA_BOUNDS);
+  }, [map]);
+  return null;
+}
+
 // leaflet.heat@0.2.0 is a UMD plugin that references a global `L`. As a top-level
 // `import 'leaflet.heat'` it has no `L` in scope when bundled and throws at
 // module-eval — which rejected this dynamic(ssr:false) import and made the whole
@@ -61,13 +79,14 @@ function HeatLayer({ heatmapData }: HeatmapProps) {
 }
 
 export default function HeatmapComponent({ heatmapData }: HeatmapProps) {
-  // Default to Chennai center if no issues
-  const center: [number, number] = [13.0827, 80.2707];
-
   return (
     <MapContainer
-      center={center}
-      zoom={11}
+      center={[20.5937, 78.9629]}
+      zoom={5}
+      minZoom={4}
+      maxZoom={18}
+      maxBounds={INDIA_BOUNDS}
+      maxBoundsViscosity={1.0}
       style={{ width: '100%', height: '400px' }}
       attributionControl={false}
     >
@@ -75,6 +94,7 @@ export default function HeatmapComponent({ heatmapData }: HeatmapProps) {
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution=""
       />
+      <FitIndia />
       <HeatLayer heatmapData={heatmapData} />
     </MapContainer>
   );

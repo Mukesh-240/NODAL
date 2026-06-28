@@ -276,6 +276,11 @@ export async function POST(request: NextRequest) {
       // issues table lacks those columns. The full text is still emailed.
       status: 'open',
       reporter_session: reporterSession,
+      // Citizen contact for the Day 7/15/30 escalation reminders. Only the email
+      // is collected (optional field on the report form); there is no server-side
+      // OAuth, so citizen_name stays null until name capture is added.
+      citizen_email: citizenEmail ?? null,
+      citizen_name: null,
     });
 
     // Update civic user points (+50 per report)

@@ -180,6 +180,12 @@ export interface Issue {
   reporter_session: string;
   created_at: string;
   resolved_at: string | null;
+  // Citizen contact + escalation-reminder bookkeeping (nullable; older rows lack them).
+  citizen_email?: string | null;
+  citizen_name?: string | null;
+  reminder_day7_sent?: boolean;
+  reminder_day15_sent?: boolean;
+  reminder_day30_sent?: boolean;
 }
 
 // ── Civic User (Leaderboard) ──────────────────────────────────────────────────

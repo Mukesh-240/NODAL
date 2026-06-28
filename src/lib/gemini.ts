@@ -120,6 +120,26 @@ ESCALATION (in the event of no remedial action within ${days} working days)
 2. A grievance under the RPWD Act 2016, §23, to the State Commissioner for Persons with Disabilities.
 3. Entry of this unresolved complaint into the public civic record via NODAL.
 
+ESCALATION TEMPLATES
+
+Should no remediation be initiated within ${days} working days, the citizen
+has been provided pre-drafted legal templates for the following free
+escalation steps:
+
+  Day 8  — RTI Application (RTI Act 2005 §6) filed at rtionline.gov.in
+            Government must respond within 30 days by law.
+
+  Day 15 — RPWD Act §23 Grievance to the State Commissioner for
+            Persons with Disabilities (statutory investigation required).
+
+  Day 30 — Lokayukta / Consumer Forum complaint.
+            No legal representation required at any stage.
+
+Full templates and filing instructions: ${process.env.NODAL_BASE_URL ?? 'https://nodal.app'}/escalate
+
+All escalation steps are free of cost. The citizen has been advised
+to cite the NODAL Tracking Reference in every filing.
+
 NODAL Tracking Reference: ${trackingCode} — please cite in any follow-up correspondence.
 
 Yours faithfully,

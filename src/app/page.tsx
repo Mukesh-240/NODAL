@@ -20,6 +20,31 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const CITIES: SupportedCity[] = ['Chennai', 'Bengaluru', 'Mumbai', 'Delhi'];
 
+// Ward/area options per city for the manual location picker. A GPS-detected ward
+// not in this list is preserved as an extra option (see the select below).
+const WARD_LIST: Record<string, string[]> = {
+  Chennai: [
+    'Anna Nagar', 'Adyar', 'Tambaram', 'Velachery', 'Mylapore',
+    'Royapuram', 'Tondiarpet', 'Perambur', 'Kodambakkam', 'Guindy',
+    'Sholinganallur', 'Perungudi', 'Villivakkam', 'Madhavaram', 'Manali',
+  ],
+  Bengaluru: [
+    'Koramangala', 'Indiranagar', 'Whitefield', 'Jayanagar', 'Malleshwaram',
+    'Rajajinagar', 'Hebbal', 'Yeshwanthpur', 'Electronic City', 'Bannerghatta',
+    'HSR Layout', 'BTM Layout', 'JP Nagar', 'Basavanagudi', 'Shivajinagar',
+  ],
+  Mumbai: [
+    'Bandra West', 'Andheri East', 'Andheri West', 'Borivali', 'Kandivali',
+    'Malad', 'Goregaon', 'Powai', 'Kurla', 'Dharavi',
+    'Worli', 'Lower Parel', 'Dadar', 'Sion', 'Chembur',
+  ],
+  Delhi: [
+    'Connaught Place', 'Karol Bagh', 'Lajpat Nagar', 'Rohini', 'Dwarka',
+    'Janakpuri', 'Pitampura', 'Saket', 'Vasant Kunj', 'Mayur Vihar',
+    'Shahdara', 'Preet Vihar', 'Paschim Vihar', 'Uttam Nagar', 'Najafgarh',
+  ],
+};
+
 // "Copies to:" footer appended to the notice the citizen sends — mirrors the
 // server-side formatCopiesFooter (kept inline so the server recipients module
 // stays out of the client bundle).
@@ -459,12 +484,20 @@ function ReportContent() {
               </select>
 
               <label className="font-label-caps text-label-caps uppercase text-on-surface-variant">Ward / Area</label>
-              <input
+              <select
                 value={loc.ward}
                 onChange={(e) => setLoc({ ...loc, ward: e.target.value })}
-                placeholder="e.g. Anna Nagar"
-                className="w-full h-12 px-md rounded-xl bg-surface-container-lowest hairline-all text-primary font-body-md mb-lg mt-1 focus:outline-none focus:border-primary transition-colors"
-              />
+                disabled={!loc.city}
+                className="w-full h-12 px-md rounded-xl bg-surface-container-lowest hairline-all text-primary font-body-md mb-lg mt-1 focus:outline-none focus:border-primary transition-colors disabled:opacity-40"
+              >
+                <option value="">Select ward / area</option>
+                {loc.ward && !(WARD_LIST[loc.city] ?? []).includes(loc.ward) && (
+                  <option value={loc.ward}>{loc.ward}</option>
+                )}
+                {(WARD_LIST[loc.city] ?? []).map((w) => (
+                  <option key={w} value={w}>{w}</option>
+                ))}
+              </select>
 
               <div className="flex gap-sm">
                 <button
@@ -681,6 +714,17 @@ function ReportContent() {
             >
               or open in your default email app
             </a>
+
+            <Link
+              href="/escalate"
+              className="mt-md w-full h-12 flex items-center justify-center gap-2 rounded-full bg-surface hairline-all text-primary font-headline-md text-[14px] active:scale-[0.98] transition-transform"
+            >
+              <span className="material-symbols-outlined text-[20px]">gavel</span>
+              View free escalation templates
+            </Link>
+            <p className="mt-1 font-body-md text-[12px] text-on-surface-variant text-center">
+              If the department doesn’t respond within 7 days
+            </p>
 
             <div className="animate-fade-up delay-400 flex gap-sm mt-lg">
               <Link
