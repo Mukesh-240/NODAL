@@ -186,6 +186,12 @@ export interface Issue {
   reminder_day7_sent?: boolean;
   reminder_day15_sent?: boolean;
   reminder_day30_sent?: boolean;
+  // Agent transparency: what the agent decided + why (nullable; older rows lack them).
+  agent_reasoning?: AgentReasoning | null;
+  pattern_detected?: boolean;
+  repeat_count?: number;
+  confidence_score?: number;
+  analysis_retried?: boolean;
 }
 
 // ── Civic User (Leaderboard) ──────────────────────────────────────────────────
@@ -212,6 +218,20 @@ export interface AnalyzeRequest {
   wardOverride?: string;
 }
 
+// What the agent decided and why — surfaced to the citizen (transparency) and
+// stored on the issue. NODAL prepares everything; the citizen sends.
+export interface AgentReasoning {
+  confidence: number;             // 0–1, Gemini's self-reported confidence
+  lowConfidence: boolean;         // confidence < 0.65 (flagged for review, not retried)
+  legalActs: string[];            // primary statutes cited in the notice (dynamic)
+  escalationActs: string[];       // statutes cited in the escalation ladder (dynamic)
+  legalReasoning: string;         // why each act was selected
+  patternDetected: boolean;
+  repeatCount: number;            // prior unresolved reports, same ward+category, 30d
+  escalationReasoning: string[];  // why the accountability chain escalated
+  dispatchModel: 'human-in-the-loop';
+}
+
 export interface AnalyzeResponse {
   success: boolean;
   trackingCode: string;
@@ -220,6 +240,7 @@ export interface AnalyzeResponse {
   route: RouteResult;
   dispatch: DraftDispatchOutput;
   chain: DispatchChain;
+  agentReasoning: AgentReasoning;
   pointsEarned: number;
   error?: string;
 }

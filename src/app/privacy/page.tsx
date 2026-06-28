@@ -24,7 +24,7 @@ export default function PrivacyPage() {
 
       <LegalSection heading="How we use it">
         <p>Your photo and location are processed to identify the issue, determine its severity, and draft formal notices (a complaint, an RTI application, and — where relevant — an accessibility grievance). We do not sell your data or use it for advertising.</p>
-        <p>NODAL then emails these notices automatically through our mail provider (Resend). In our current demo deployment, dispatches are routed to a <strong>secure test inbox</strong> rather than to live government addresses. You can also send the notice yourself from your own Gmail using the prefilled draft on the confirmation screen.</p>
+        <p>NODAL does <strong>not</strong> email these notices to the government on your behalf. It prepares the notice and a prefilled Gmail/email compose, and <strong>you</strong> send it from your own account. The only email NODAL sends through our mail provider (Resend) is an optional confirmation copy to you — and only if you provided an email address.</p>
       </LegalSection>
 
       <LegalSection heading="Third-party services">

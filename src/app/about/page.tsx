@@ -22,12 +22,12 @@ export default function AboutPage() {
           <li><strong>Classify</strong> — Gemini vision identifies the category and severity.</li>
           <li><strong>Route</strong> — your location maps to the exact ward officer and department.</li>
           <li><strong>Draft</strong> — a formal complaint, an RTI application, and (where relevant) an RPWD Act accessibility grievance are written for you.</li>
-          <li><strong>Dispatch</strong> — NODAL emails the notices for you (routed to a test inbox in this demo), and you can also send them yourself from your own Gmail. Track status anytime with your reference code.</li>
+          <li><strong>Send</strong> — NODAL prepares the notice and a one-tap Gmail/email compose, and <strong>you</strong> send it from your own account. NODAL does not email the department on your behalf — your name is on a formal notice, so the send is yours. Track status anytime with your reference code.</li>
         </ul>
       </LegalSection>
 
       <LegalSection heading="Honest by design">
-        <p>NODAL is transparent about where your report goes: it shows you the routed department and the accountability chain before anything is sent. In our current demo deployment, dispatched notices are routed to a <strong>secure test inbox</strong>, not to live government addresses, and you can always send the notice yourself from your own email. The tracking reference and statutory citations appear in every notice so authorities — and you — can hold the process accountable, and we never show a status we can&apos;t back up.</p>
+        <p>NODAL is transparent about where your report goes: it shows you the routed department and the accountability chain before you send anything. By design, <strong>NODAL never auto-sends notices to government addresses</strong> — it prepares everything and you tap to send from your own account, because the notice carries your name and that one tap is your legal ownership of the complaint. The only email NODAL sends is a confirmation copy to you. The tracking reference and statutory citations appear in every notice so authorities — and you — can hold the process accountable, and we never show a status we can&apos;t back up.</p>
       </LegalSection>
 
       <LegalSection heading="Open source & credits">

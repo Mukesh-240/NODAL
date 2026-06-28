@@ -13,12 +13,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sanitizeForLogging } from '@/lib/logger';
-import { analyzeImage, draftDispatch, validateImageInput, buildLegalFooter } from '@/lib/gemini';
-import { routeIssue, generateTrackingCode, isInIndia, routingMatrix } from '@/lib/routingMatrix';
-import { buildDispatchChain, resolveSendTargets, formatCopiesFooter } from '@/lib/recipients';
-import { insertIssue, uploadIssueImage, upsertCivicUser } from '@/lib/supabase';
-import { sendConfirmationEmail, sendDispatchViaResend } from '@/lib/email';
-import { AnalyzeRequest, AnalyzeResponse, SupportedCity } from '@/types';
+import { analyzeImage, draftDispatch, validateImageInput, buildLegalFooter, selectApplicableLegalActs } from '@/lib/gemini';
+import { routeIssue, generateTrackingCode, isInIndia } from '@/lib/routingMatrix';
+import { buildDispatchChain } from '@/lib/recipients';
+import { insertIssue, uploadIssueImage, upsertCivicUser, detectPattern } from '@/lib/supabase';
+import { sendConfirmationEmail } from '@/lib/email';
+import { generateUUID } from '@/lib/utils';
+import { AnalyzeRequest, AnalyzeResponse, AgentReasoning, SupportedCity, getPriority } from '@/types';
 
 // ── Input Validation Schema (Zod) ─────────────────────────────────────────────
 const AnalyzeRequestSchema = z.object({
@@ -153,7 +154,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const issueId = crypto.randomUUID();
+  const issueId = generateUUID();
 
   // ════════════════════════════════════════════════════════════════════════════
   // TOOL 1: analyze_image — Gemini 1.5 Pro (multimodal vision)
@@ -202,18 +203,51 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Human-readable NODAL Tracking Ref — generated before pattern detection &
+  // drafting so the documents cite it and we can exclude it from the pattern query.
+  const trackingCode = generateTrackingCode(route.city);
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // TOOL 6: detect_pattern — systemic-cluster detection (read-only Supabase)
+  // ════════════════════════════════════════════════════════════════════════════
+  // Runs before the chain so a detected pattern can escalate the CC to the
+  // Commissioner. Non-fatal: a query failure degrades to "no pattern".
+  logTool('detect_pattern', 'start');
+  const tp = Date.now();
+  const patternResult = await detectPattern(route.ward, route.city, analysis.category, trackingCode);
+  logTool('detect_pattern', 'done', Date.now() - tp);
+
   // Severity-based accountability chain (dept + ward officer; +commissioner when
-  // High). Built here since it needs both the routing and the severity score.
+  // High OR a systemic pattern is detected). Needs routing + severity + pattern.
   const chain = buildDispatchChain({
     city: route.city,
     ward: route.ward,
     department: route.department,
     severity: analysis.severity,
+    patternDetected: patternResult.patternDetected,
   });
 
-  // Human-readable NODAL Tracking Ref — generated here (before drafting) so the
-  // dispatch documents cite it instead of the internal UUID.
-  const trackingCode = generateTrackingCode(route.city);
+  // Agent transparency — which statutes were selected + why the chain escalated.
+  // NODAL prepares everything; the citizen sends (human-in-the-loop dispatch model).
+  const legalActs = selectApplicableLegalActs(analysis, route.city);
+  const escalationReasoning: string[] = ['Ward officer CC: standard for all reports'];
+  if (getPriority(analysis.severity) === 'High') {
+    escalationReasoning.push(`Severity ${analysis.severity}/10 is High → Commissioner escalation`);
+  }
+  if (patternResult.patternDetected) {
+    escalationReasoning.push(`${patternResult.repeatCount} prior unresolved reports in this ward → pattern escalation`);
+  }
+  const agentReasoning: AgentReasoning = {
+    confidence: analysis.confidence,
+    lowConfidence: analysis.confidence < 0.65,
+    legalActs: legalActs.primary,
+    escalationActs: legalActs.escalation,
+    legalReasoning: legalActs.reasoning,
+    patternDetected: patternResult.patternDetected,
+    repeatCount: patternResult.repeatCount,
+    escalationReasoning,
+    dispatchModel: 'human-in-the-loop',
+  };
 
   // ════════════════════════════════════════════════════════════════════════════
   // TOOL 3: draft_dispatch — Gemini 1.5 Pro (text generation)
@@ -281,6 +315,12 @@ export async function POST(request: NextRequest) {
       // OAuth, so citizen_name stays null until name capture is added.
       citizen_email: citizenEmail ?? null,
       citizen_name: null,
+      // Agent transparency — what the agent decided + why (CHANGE 6).
+      agent_reasoning: agentReasoning,
+      pattern_detected: patternResult.patternDetected,
+      repeat_count: patternResult.repeatCount,
+      confidence_score: analysis.confidence,
+      analysis_retried: false, // retry intentionally disabled (cost) — see agentReasoning.lowConfidence
     });
 
     // Update civic user points (+50 per report)
@@ -297,69 +337,22 @@ export async function POST(request: NextRequest) {
   }
 
   // ════════════════════════════════════════════════════════════════════════════
-  // TOOL 5: notify_citizen — Resend API + Gmail API (non-fatal if they fail)
+  // TOOL 5: prepare_dispatch_package — confirmation to the CITIZEN only
   // ════════════════════════════════════════════════════════════════════════════
-  logTool('notify_citizen', 'start');
+  // Human-in-the-loop by design: NODAL prepares the full notice + the Gmail/mailto
+  // compose deep-link (built client-side on the confirmation screen) and the
+  // citizen sends it from their OWN account. The citizen's name is on a formal
+  // legal notice, so the send is theirs to make — that one tap is the legal
+  // accountability. The agent therefore NEVER auto-sends to government addresses.
+  // The only server email is the confirmation copy to the citizen (their report +
+  // tracking code), and only if they gave an email.
+  logTool('prepare_dispatch_package', 'start');
   try {
     const t5 = Date.now();
 
-    // Resolve the severity-based chain to actual send addresses. Demo →
-    // { to: testInbox, cc: [testInbox] }; live → { to: deptEmail, cc: [] } since
-    // ward/commissioner have no verified address (never invented).
-    const { to: deptTo, cc: deptCc } = resolveSendTargets(chain);
-    // ⚠️  DISPATCH_MODE coupling — if you flip this to "live",
-    // update three pages to remove "test inbox" / "demo" copy:
-    //   src/app/about/page.tsx      → "Honest limitations" section
-    //   src/app/privacy/page.tsx    → "How we use it" section
-    //   src/app/terms/page.tsx      → "What NODAL does" section
-    // In live mode, notices go to real government addresses.
-    // Keep DISPATCH_MODE=demo until domain is verified + you're
-    // ready for real dispatch.
-    const demo = chain.mode === 'demo';
-    const sink = process.env.DISPATCH_TEST_INBOX || null;
-    // RPWD goes to the accessibility desk; demo overrides to the test inbox.
-    const accTo = demo ? sink : routingMatrix[route.city]['broken_ramp_accessibility'].email;
-
-    // Server-side dispatch always goes via Resend (demo-safe, works for judges).
-    // The citizen ALSO gets a Gmail compose deep-link on the confirmation screen
-    // to send the formal notice themselves (human-in-the-loop).
-    const sendDispatch = (to: string, subject: string, body: string, cc?: string[]) =>
-      sendDispatchViaResend({ to, cc, subject, body, replyTo: citizenEmail });
-
-    // Labeled tasks so logs stay correct regardless of which emails actually fire.
-    const tasks: { label: string; promise: Promise<unknown> }[] = [];
-
-    // 1. Formal Notice to the department, copying the accountability chain. The
-    //    "Copies to:" footer always lists the real intended roles. Skipped (not
-    //    invented) if there's no verified send target.
-    if (deptTo) {
-      tasks.push({
-        label: 'Formal Notice',
-        promise: sendDispatch(
-          deptTo,
-          dispatch.subject,
-          dispatch.emailNotice + formatCopiesFooter(chain),
-          deptCc.length ? deptCc : undefined,
-        ),
-      });
-      // 2. RTI Application to PIO (same primary recipient, no chain cc).
-      tasks.push({
-        label: 'RTI Application',
-        promise: sendDispatch(
-          deptTo,
-          `[RTI Act 2005] Application under Section 6(1) — Ref: ${trackingCode!}`,
-          dispatch.rtiApplication,
-        ),
-      });
-    } else {
-      console.warn('[notify_citizen] No verified dispatch target (live mode, unknown dept) — notice + RTI skipped.');
-    }
-
-    // 3. Resend Confirmation to Citizen — only if they gave an email.
     if (citizenEmail) {
-      tasks.push({
-        label: 'Resend Confirmation',
-        promise: sendConfirmationEmail({
+      try {
+        await sendConfirmationEmail({
           to: citizenEmail,
           trackingCode: trackingCode!,
           issueId,
@@ -367,46 +360,25 @@ export async function POST(request: NextRequest) {
           route,
           dispatch,
           chain,
-        }),
-      });
-    } else {
-      console.warn('[notify_citizen] No citizen email provided — confirmation copy skipped.');
-    }
-
-    // 4. RPWD Grievance to Accessibility Officer (if accessibility violation detected)
-    if (analysis.rpwdViolation && dispatch.rpwdComplaint && accTo) {
-      tasks.push({
-        label: 'RPWD Grievance',
-        promise: sendDispatch(
-          accTo,
-          `[RPWD Act 2016] Section 40 Accessibility Complaint — Ref: ${trackingCode!}`,
-          dispatch.rpwdComplaint,
-        ),
-      });
-    }
-
-    const results = await Promise.allSettled(tasks.map((t) => t.promise));
-
-    results.forEach((result, idx) => {
-      const emailLabel = tasks[idx].label;
-
-      if (result.status === 'rejected') {
-        console.error(`[notify_citizen] ${emailLabel} failed:`, result.reason);
-      } else {
-        console.log(`[notify_citizen] ${emailLabel} sent successfully.`);
+        });
+        console.log('[prepare_dispatch_package] Citizen confirmation sent.');
+      } catch (e) {
+        console.error('[prepare_dispatch_package] Citizen confirmation failed:', e);
       }
-    });
+    } else {
+      console.warn('[prepare_dispatch_package] No citizen email provided — confirmation copy skipped.');
+    }
 
-    logTool('notify_citizen', 'done', Date.now() - t5);
+    logTool('prepare_dispatch_package', 'done', Date.now() - t5);
   } catch (err) {
     // Non-fatal: the report is saved. Email failures should not block the user.
-    logTool('notify_citizen', 'error');
-    console.warn('[notify_citizen] Notification tasks encountered an error:', err);
+    logTool('prepare_dispatch_package', 'error');
+    console.warn('[prepare_dispatch_package] Citizen notification encountered an error:', err);
   }
 
   // ── Success Response ────────────────────────────────────────────────────────
   const totalTime = Date.now() - startTime;
-  console.log(`✅ [NODAL] Full 5-tool loop completed in ${totalTime}ms for issue ${issueId}`);
+  console.log(`✅ [NODAL] Full 6-tool agent loop completed in ${totalTime}ms for issue ${issueId}`);
 
   const response: AnalyzeResponse = {
     success: true,
@@ -416,6 +388,7 @@ export async function POST(request: NextRequest) {
     route,
     dispatch,
     chain,
+    agentReasoning,
     pointsEarned: 50,
   };
 

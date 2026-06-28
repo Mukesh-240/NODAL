@@ -14,7 +14,7 @@ export default function TermsPage() {
       updated="28 June 2026"
     >
       <LegalSection heading="What NODAL does">
-        <p>NODAL helps you document a civic issue, classifies it with AI, routes it to the appropriate municipal department, and drafts formal notices (complaint, RTI, and accessibility grievance). NODAL dispatches these notices by email; in the current demo deployment they are routed to a test inbox, and you can also send them yourself from your own email.</p>
+        <p>NODAL helps you document a civic issue, classifies it with AI, routes it to the appropriate municipal department, and drafts formal notices (complaint, RTI, and accessibility grievance). NODAL prepares the notice and a prefilled compose; <strong>you</strong> send it from your own email account. NODAL does not dispatch notices to the government on your behalf — the only email it sends is an optional confirmation copy to you.</p>
       </LegalSection>
 
       <LegalSection heading="Your responsibilities">

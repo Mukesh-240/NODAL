@@ -34,9 +34,12 @@ interface BuildChainInput {
   ward: string;
   department: DepartmentInfo;
   severity: number;
+  // When a systemic pattern is detected in the ward, escalate to the Commissioner
+  // even if this single report isn't high-severity.
+  patternDetected?: boolean;
 }
 
-export function buildDispatchChain({ city, ward, department, severity }: BuildChainInput): DispatchChain {
+export function buildDispatchChain({ city, ward, department, severity, patternDetected }: BuildChainInput): DispatchChain {
   const mode = getDispatchMode();
   const sink = process.env.DISPATCH_TEST_INBOX || null;
   const desk = CITY_DESK[city];
@@ -54,11 +57,12 @@ export function buildDispatchChain({ city, ward, department, severity }: BuildCh
     sendTo: sendFor(department.email),
   };
 
-  // cc: ward officer always; commissioner only for a genuine high-severity hazard.
+  // cc: ward officer always; commissioner for a genuine high-severity hazard OR a
+  // detected systemic pattern in the ward (repeat unresolved reports).
   const cc: DispatchChain['cc'] = [
     { role: `Ward Officer — ${ward}`, intendedEmail: null, sendTo: sendFor(null) },
   ];
-  if (getPriority(severity) === 'High') {
+  if (getPriority(severity) === 'High' || patternDetected) {
     cc.push({ role: desk.commissionerRole, intendedEmail: null, sendTo: sendFor(null) });
   }
 

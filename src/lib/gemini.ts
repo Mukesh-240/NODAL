@@ -19,6 +19,7 @@ import {
   DraftDispatchOutput,
   IssueCategory,
   RouteResult,
+  SupportedCity,
 } from '@/types';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -103,6 +104,58 @@ const CATEGORY_DUTY: Record<IssueCategory, string> = {
   other: 'The Corporation bears a statutory duty to maintain safe, functional public infrastructure; this defect endangers public welfare.',
 };
 
+// The municipal corporation that actually governs each city — used so the notice
+// cites the CORRECT governing statute, not a single state's act for every city.
+const MUNICIPAL_ACT: Record<SupportedCity, string> = {
+  Chennai: 'Chennai City Municipal Corporation Act 1919',
+  Bengaluru: 'BBMP Act 2020',
+  Mumbai: 'Mumbai Municipal Corporation Act 1888',
+  Delhi: 'Delhi Municipal Corporation Act 1957',
+};
+
+export interface LegalActs {
+  primary: string[];     // cited in the notice's legal basis
+  escalation: string[];  // cited in the escalation ladder
+  reasoning: string;     // why each act was selected (agent transparency)
+}
+
+// Dynamically pick which statutes apply to THIS issue, based on severity, category
+// and accessibility impact — so the notice doesn't cite the same three acts every
+// time. RPWD §40 + RTI §6 are always present (literal strings other code relies on).
+export function selectApplicableLegalActs(analysis: AnalyzeImageOutput, city: SupportedCity): LegalActs {
+  const primary: string[] = [];
+  const escalation: string[] = [];
+  const reasoning: string[] = [];
+
+  // RPWD §40 — always (barrier-free duty on all public infrastructure).
+  primary.push('RPWD Act 2016 §40');
+  reasoning.push('§40 applies to all public infrastructure');
+
+  // RPWD §45 — only when the accessibility/safety stakes are high.
+  if (analysis.rpwdViolation || analysis.severity >= 6) {
+    primary.push('RPWD Act 2016 §45');
+    reasoning.push(`§45 triggered: ${analysis.rpwdViolation ? 'accessibility violation flagged' : `severity ${analysis.severity}/10`}`);
+  }
+
+  // City-correct municipal maintenance duty — for genuine infrastructure defects
+  // (not generic "other"). Cites the act that actually governs THIS city.
+  if (analysis.category !== 'other') {
+    primary.push(MUNICIPAL_ACT[city]);
+    reasoning.push(`${MUNICIPAL_ACT[city]} triggered: ${analysis.category.replace(/_/g, ' ')} is a municipal maintenance obligation`);
+  }
+
+  // RTI §6 — always available as the first escalation lever.
+  escalation.push('RTI Act 2005 §6');
+
+  // RPWD §23 grievance — reserved for the most serious (severity ≥ 7).
+  if (analysis.severity >= 7) {
+    escalation.push('RPWD Act 2016 §23');
+    reasoning.push(`§23 escalation enabled: severity ${analysis.severity}/10 meets the threshold`);
+  }
+
+  return { primary, escalation, reasoning: reasoning.join('. ') };
+}
+
 export function buildLegalFooter(
   analysis: AnalyzeImageOutput,
   route: RouteResult,
@@ -110,15 +163,26 @@ export function buildLegalFooter(
 ): string {
   const days = route.department.avgResolutionDays;
   const duty = CATEGORY_DUTY[analysis.category] || CATEGORY_DUTY.other;
+  const acts = selectApplicableLegalActs(analysis, route.city);
+
+  // Escalation ladder lines built from the dynamically-selected escalation acts.
+  const escalationLines = [
+    acts.escalation.includes('RTI Act 2005 §6')
+      ? `A formal information request under the Right to Information Act, 2005 (RTI Act 2005), §6, seeking the action-taken report on this complaint.`
+      : null,
+    acts.escalation.includes('RPWD Act 2016 §23')
+      ? `A grievance under the RPWD Act 2016, §23, to the State Commissioner for Persons with Disabilities.`
+      : null,
+    `Entry of this unresolved complaint into the public civic record via NODAL.`,
+  ].filter(Boolean).map((line, i) => `${i + 1}. ${line}`).join('\n');
+
   return `
 
 LEGAL BASIS
-${duty} Under the Rights of Persons with Disabilities Act, 2016 (RPWD Act 2016), §40 & §45, the Corporation bears a statutory duty to maintain accessible, barrier-free and safe public infrastructure; this defect obstructs safe access for persons with disabilities, the elderly, and the general public.
+${duty} The applicable statutory provisions are: ${acts.primary.join('; ')}. Under these provisions the Corporation bears a statutory duty to maintain accessible, barrier-free and safe public infrastructure; this defect obstructs safe access for persons with disabilities, the elderly, and the general public.
 
 ESCALATION (in the event of no remedial action within ${days} working days)
-1. A formal information request under the Right to Information Act, 2005 (RTI Act 2005), §6, seeking the action-taken report on this complaint.
-2. A grievance under the RPWD Act 2016, §23, to the State Commissioner for Persons with Disabilities.
-3. Entry of this unresolved complaint into the public civic record via NODAL.
+${escalationLines}
 
 ESCALATION TEMPLATES
 

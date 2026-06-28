@@ -78,6 +78,52 @@ export async function deleteIssue(issue: Pick<Issue, 'id' | 'image_url'>): Promi
   if (error) throw new Error(`Failed to delete issue: ${error.message}`);
 }
 
+// ── Tool 6: detect_pattern ────────────────────────────────────────────────────
+// Looks for a cluster of the SAME unresolved issue in the SAME ward over the last
+// 30 days. 3+ → a systemic pattern, which escalates the accountability chain to
+// the Commissioner regardless of this single report's severity.
+export interface PatternResult {
+  patternDetected: boolean;
+  repeatCount: number;
+  recommendation: 'ESCALATE' | 'STANDARD';
+  message: string;
+}
+
+export async function detectPattern(
+  ward: string,
+  city: string,
+  category: IssueCategory,
+  currentTrackingCode: string,
+): Promise<PatternResult> {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from('issues')
+    .select('id')
+    .eq('ward', ward)
+    .eq('city', city)
+    .eq('category', category)
+    .neq('tracking_code', currentTrackingCode)
+    .neq('status', 'resolved')
+    .gte('created_at', thirtyDaysAgo)
+    .limit(10);
+
+  if (error) {
+    console.warn('[detectPattern] query failed (non-fatal):', error.message);
+    return { patternDetected: false, repeatCount: 0, recommendation: 'STANDARD', message: '' };
+  }
+
+  const count = data?.length ?? 0;
+  if (count >= 3) {
+    return {
+      patternDetected: true,
+      repeatCount: count,
+      recommendation: 'ESCALATE',
+      message: `${count} unresolved ${category.replace(/_/g, ' ')} reports in ${ward} in 30 days — pattern detected`,
+    };
+  }
+  return { patternDetected: false, repeatCount: count, recommendation: 'STANDARD', message: 'No repeat pattern in this ward' };
+}
+
 export async function getIssueById(id: string): Promise<Issue | null> {
   // Strip anything that isn't part of a UUID or tracking code (NDL-CHN-12345)
   // before using it in the filter — prevents injection.

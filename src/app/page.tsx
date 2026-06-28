@@ -127,11 +127,12 @@ interface DetectedLocation {
 // one-by-one sense of progress through the (mostly server-side) pipeline, and
 // the screen snaps to the confirmation when the request actually returns.
 const STAGES = [
-  { label: 'Reading the photo', sub: 'Gemini vision is identifying the issue' },
-  { label: 'Confirming the routing', sub: 'Matching your location to ward & department' },
-  { label: 'Drafting formal notice', sub: 'Complaint, RTI & accessibility letters' },
-  { label: 'Filing the record', sub: 'Saving your report and tracking code' },
-  { label: 'Preparing dispatch', sub: 'Getting the notice ready to send' },
+  { label: 'Analyzing photo with Gemini Vision', sub: 'Grading severity & category' },
+  { label: 'Routing to the correct department', sub: 'Matching ward → corporation → department' },
+  { label: 'Selecting applicable legal acts', sub: 'Choosing the statutes that apply to this issue' },
+  { label: 'Logging to the civic record', sub: 'Saving your report, tracking code & agent reasoning' },
+  { label: 'Detecting patterns in ward data', sub: 'Checking for repeat unresolved reports nearby' },
+  { label: 'Preparing dispatch package', sub: 'Notice ready — awaiting your review and send' },
 ];
 const STAGE_MS = 2600; // time each stage is shown before advancing
 
@@ -678,6 +679,36 @@ function ReportContent() {
             <p className="animate-fade-up delay-300 font-body-md text-[14px] text-on-surface-variant bg-surface-container rounded-full py-sm mt-md">
               🏆 You earned {result.pointsEarned} civic points
             </p>
+
+            {/* Agent reasoning — transparency: what the agent decided + why. NODAL
+                prepares everything; you send. */}
+            <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
+              <div className="flex items-center gap-2 mb-sm text-primary">
+                <span className="material-symbols-outlined text-[18px]">neurology</span>
+                <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Agent reasoning</h3>
+              </div>
+              <div className="flex flex-col gap-sm">
+                <Row label="AI confidence">
+                  <span className="font-stats-tabular">
+                    {Math.round(result.agentReasoning.confidence * 100)}%
+                    {result.agentReasoning.lowConfidence && ' · flagged for review'}
+                  </span>
+                </Row>
+                <Row label="Legal acts cited">
+                  <span className="text-right">{result.agentReasoning.legalActs.join(' · ')}</span>
+                </Row>
+                <Row label="Escalation levers">
+                  <span className="text-right">{result.agentReasoning.escalationActs.join(' · ')}</span>
+                </Row>
+                <Row label="Ward pattern">
+                  <span className="text-right">
+                    {result.agentReasoning.patternDetected
+                      ? `${result.agentReasoning.repeatCount} prior reports — escalated to Commissioner`
+                      : 'None detected'}
+                  </span>
+                </Row>
+              </div>
+            </div>
 
             {/* Drafted notice — full text, with copy (manual-send model) */}
             <div className="animate-fade-up delay-300 mt-lg text-left">
