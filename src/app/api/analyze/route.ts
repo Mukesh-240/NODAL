@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sanitizeForLogging } from '@/lib/logger';
-import { analyzeImage, draftDispatch, validateImageInput, buildLegalFooter, selectApplicableLegalActs } from '@/lib/gemini';
+import { analyzeImage, draftDispatch, validateImageInput, buildLegalFooter, selectApplicableLegalActs, selectLegalActsWithGemini } from '@/lib/gemini';
 import { routeIssue, generateTrackingCode, isInIndia } from '@/lib/routingMatrix';
 import { buildDispatchChain } from '@/lib/recipients';
 import { insertIssue, uploadIssueImage, upsertCivicUser, detectPattern } from '@/lib/supabase';
@@ -227,8 +227,21 @@ export async function POST(request: NextRequest) {
     patternDetected: patternResult.patternDetected,
   });
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // TOOL 2.5: select_legal_acts — Gemini legal reasoning (hallucination-safe)
+  // ════════════════════════════════════════════════════════════════════════════
+  // Runs between routing and drafting so the AI-selected statutes feed the notice
+  // prose AND the citizen-facing review panel. Never throws (safe fallback inside).
+  logTool('select_legal_acts', 'start');
+  const tl = Date.now();
+  const legalReasoning = await selectLegalActsWithGemini(analysis, route);
+  logTool('select_legal_acts', 'done', Date.now() - tl);
+  const appliedActs = legalReasoning.applicableActs.filter((a) => a.applies);
+  const legalHint = appliedActs.map((a) => `${a.act} ${a.section}`).join(', ');
+
   // Agent transparency — which statutes were selected + why the chain escalated.
   // NODAL prepares everything; the citizen sends (human-in-the-loop dispatch model).
+  // legalActs (deterministic) is the guaranteed backstop; legalReasoning is the AI layer.
   const legalActs = selectApplicableLegalActs(analysis, route.city);
   const escalationReasoning: string[] = ['Ward officer CC: standard for all reports'];
   if (getPriority(analysis.severity) === 'High') {
@@ -243,6 +256,9 @@ export async function POST(request: NextRequest) {
     legalActs: legalActs.primary,
     escalationActs: legalActs.escalation,
     legalReasoning: legalActs.reasoning,
+    legalActsReasoning: appliedActs.map((a) => `${a.act} ${a.section} [${a.citationStrength}]: ${a.reasoning}`),
+    legalSummary: legalReasoning.legalSummary,
+    hallucinationWarning: legalReasoning.hallucination_warning ?? null,
     patternDetected: patternResult.patternDetected,
     repeatCount: patternResult.repeatCount,
     escalationReasoning,
@@ -262,6 +278,7 @@ export async function POST(request: NextRequest) {
       analysis,
       route,
       reportedAt: new Date().toISOString(),
+      legalHint,
     });
     logTool('draft_dispatch', 'done', Date.now() - t3);
   } catch (err) {
@@ -389,6 +406,7 @@ export async function POST(request: NextRequest) {
     dispatch,
     chain,
     agentReasoning,
+    legalReasoning,
     pointsEarned: 50,
   };
 

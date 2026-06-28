@@ -129,8 +129,8 @@ interface DetectedLocation {
 const STAGES = [
   { label: 'Analyzing photo with Gemini Vision', sub: 'Grading severity & category' },
   { label: 'Routing to the correct department', sub: 'Matching ward → corporation → department' },
-  { label: 'Selecting applicable legal acts', sub: 'Choosing the statutes that apply to this issue' },
-  { label: 'Logging to the civic record', sub: 'Saving your report, tracking code & agent reasoning' },
+  { label: 'AI selecting applicable Indian law', sub: 'Reasoning over RPWD, RTI & municipal acts' },
+  { label: 'Drafting the legal notice', sub: 'Complaint + RTI, grounded in the selected statutes' },
   { label: 'Detecting patterns in ward data', sub: 'Checking for repeat unresolved reports nearby' },
   { label: 'Preparing dispatch package', sub: 'Notice ready — awaiting your review and send' },
 ];
@@ -694,12 +694,6 @@ function ReportContent() {
                     {result.agentReasoning.lowConfidence && ' · flagged for review'}
                   </span>
                 </Row>
-                <Row label="Legal acts cited">
-                  <span className="text-right">{result.agentReasoning.legalActs.join(' · ')}</span>
-                </Row>
-                <Row label="Escalation levers">
-                  <span className="text-right">{result.agentReasoning.escalationActs.join(' · ')}</span>
-                </Row>
                 <Row label="Ward pattern">
                   <span className="text-right">
                     {result.agentReasoning.patternDetected
@@ -707,6 +701,38 @@ function ReportContent() {
                       : 'None detected'}
                   </span>
                 </Row>
+              </div>
+            </div>
+
+            {/* Legal acts selected by AI — per-act reasoning + applies/not. The
+                citizen's hallucination checkpoint before they send. */}
+            <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
+              <p className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-md">Legal acts selected by AI</p>
+              <div className="flex flex-col gap-sm">
+                {result.legalReasoning.applicableActs.map((act, i) => (
+                  <div key={i} className="flex gap-2 items-start">
+                    <span
+                      className={`material-symbols-outlined text-[16px] mt-0.5 shrink-0 ${act.applies ? '' : 'text-on-surface-variant opacity-40'}`}
+                      style={act.applies ? { color: '#10b981' } : undefined}
+                    >
+                      {act.applies ? 'check_circle' : 'cancel'}
+                    </span>
+                    <div>
+                      <span className="font-headline-md text-[13px] text-primary">{act.act} {act.section}</span>
+                      <p className="font-body-md text-[12px] text-on-surface-variant mt-0.5">{act.reasoning}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {result.legalReasoning.hallucination_warning && (
+                <p className="font-body-md text-[12px] mt-md hairline-t pt-sm" style={{ color: '#FB8C00' }}>
+                  ⚠ {result.legalReasoning.hallucination_warning}
+                </p>
+              )}
+              <div className="mt-md hairline-t pt-sm">
+                <p className="font-body-md text-[12px] text-on-surface-variant">
+                  Review the AI&apos;s reasoning above before sending. If anything looks wrong, tap Edit before dispatching.
+                </p>
               </div>
             </div>
 
@@ -728,10 +754,20 @@ function ReportContent() {
               </div>
             </div>
 
+            {/* Hallucination safety net — go back to correct the details and re-file
+                before sending, if the AI's reasoning looks wrong. */}
+            <button
+              onClick={() => setPhase('confirm')}
+              className="animate-fade-up delay-300 w-full h-12 mt-md flex items-center justify-center gap-2 rounded-full bg-surface hairline-all text-primary font-headline-md text-[14px] active:scale-[0.98] transition-transform"
+            >
+              <span className="material-symbols-outlined text-[18px]">edit</span>
+              Edit details before sending
+            </button>
+
             {/* Primary action — citizen sends the notice from their own Gmail */}
             <button
               onClick={openInGmail}
-              className="animate-fade-up delay-300 w-full h-12 mt-md flex items-center justify-center gap-2 rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+              className="animate-fade-up delay-300 w-full h-12 mt-sm flex items-center justify-center gap-2 rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
             >
               <span className="material-symbols-outlined text-[20px]">mail</span>
               {noticeSent ? 'Reopen in Gmail' : 'Open in Gmail to Send'}

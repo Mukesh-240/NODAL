@@ -120,6 +120,7 @@ export interface DraftDispatchInput {
   analysis: AnalyzeImageOutput;
   route: RouteResult;
   reportedAt: string;
+  legalHint?: string;         // AI-selected applicable statutes to weave into the prose
 }
 
 export interface DraftDispatchOutput {
@@ -218,14 +219,32 @@ export interface AnalyzeRequest {
   wardOverride?: string;
 }
 
+// Gemini-selected legal reasoning (Tool 2.5), sanitized against a known-acts list.
+export interface LegalActResult {
+  act: string;
+  section: string;
+  applies: boolean;
+  reasoning: string;
+  citationStrength: 'strong' | 'moderate' | 'weak';
+}
+
+export interface LegalReasoningResult {
+  applicableActs: LegalActResult[];
+  legalSummary: string;
+  hallucination_warning?: string;  // set only when the safe fallback was used
+}
+
 // What the agent decided and why — surfaced to the citizen (transparency) and
 // stored on the issue. NODAL prepares everything; the citizen sends.
 export interface AgentReasoning {
   confidence: number;             // 0–1, Gemini's self-reported confidence
   lowConfidence: boolean;         // confidence < 0.65 (flagged for review, not retried)
-  legalActs: string[];            // primary statutes cited in the notice (dynamic)
-  escalationActs: string[];       // statutes cited in the escalation ladder (dynamic)
-  legalReasoning: string;         // why each act was selected
+  legalActs: string[];            // primary statutes (deterministic backstop)
+  escalationActs: string[];       // escalation-ladder statutes (deterministic backstop)
+  legalReasoning: string;         // why each act was selected (deterministic)
+  legalActsReasoning: string[];   // AI-selected acts: "Act §x [strength]: reason"
+  legalSummary: string;           // AI one-line legal basis
+  hallucinationWarning: string | null; // set when AI legal reasoning fell back
   patternDetected: boolean;
   repeatCount: number;            // prior unresolved reports, same ward+category, 30d
   escalationReasoning: string[];  // why the accountability chain escalated
@@ -241,6 +260,7 @@ export interface AnalyzeResponse {
   dispatch: DraftDispatchOutput;
   chain: DispatchChain;
   agentReasoning: AgentReasoning;
+  legalReasoning: LegalReasoningResult;  // AI per-act reasoning for the review panel
   pointsEarned: number;
   error?: string;
 }

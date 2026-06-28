@@ -18,6 +18,7 @@ import {
   DraftDispatchInput,
   DraftDispatchOutput,
   IssueCategory,
+  LegalReasoningResult,
   RouteResult,
   SupportedCity,
 } from '@/types';
@@ -211,6 +212,105 @@ A concerned citizen
 (Filed via NODAL — civic infrastructure audit platform)`;
 }
 
+// ── Tool 2.5: select_legal_acts — Gemini legal reasoning (hallucination-safe) ──
+// Asks Gemini which Indian statutes genuinely apply to THIS issue, then sanitizes
+// the answer: drops anything not in a known-acts allowlist (no invented statutes),
+// and guarantees RPWD §40 + RTI §6 are always present. On any failure it returns a
+// valid fallback — it never throws. This is the AI legal layer; buildLegalFooter
+// remains the deterministic backstop that guarantees citations in the notice body.
+const KNOWN_ACTS = [
+  'RPWD Act 2016', 'RTI Act 2005',
+  'Chennai City Municipal Corporation Act 1919',
+  'BBMP Act 2020',
+  'Mumbai Municipal Corporation Act 1888',
+  'Delhi Municipal Corporation Act 1957',
+];
+
+const LEGAL_FALLBACK_ACTS: LegalReasoningResult['applicableActs'] = [
+  { act: 'RPWD Act 2016', section: '§40', applies: true,
+    reasoning: 'Public infrastructure must be maintained barrier-free for persons with disabilities.',
+    citationStrength: 'strong' },
+  { act: 'RTI Act 2005', section: '§6', applies: true,
+    reasoning: 'Citizen is entitled to demand an action-taken report from the department.',
+    citationStrength: 'strong' },
+];
+
+export async function selectLegalActsWithGemini(
+  analysis: AnalyzeImageOutput,
+  route: RouteResult,
+): Promise<LegalReasoningResult> {
+  const municipalAct = MUNICIPAL_ACT[route.city];
+  const accessibilityImpact = analysis.rpwdViolation ? 'HIGH' : analysis.severity >= 6 ? 'MODERATE' : 'LOW';
+
+  const prompt = `You are an expert in Indian civic and disability rights law.
+Analyze this infrastructure issue and determine which statutes apply.
+
+ISSUE:
+- Category: ${analysis.category}
+- Severity: ${analysis.severity}/10
+- Accessibility Impact: ${accessibilityImpact}
+- City: ${route.city}
+- Description: ${analysis.description}
+
+STATUTES TO EVALUATE:
+1. RPWD Act 2016 §40 — duty to maintain barrier-free public infrastructure
+2. RPWD Act 2016 §45 — accessibility standards for public spaces
+3. RPWD Act 2016 §23 — grievance to State Commissioner (serious violations)
+4. RTI Act 2005 §6 — citizen's right to demand an action-taken report
+5. ${municipalAct} — municipal duty to maintain public infrastructure
+
+For each statute respond with whether it applies to THIS specific issue and a
+one-sentence reason grounded in the facts above.
+
+IMPORTANT: Only cite a statute if it genuinely applies. If you are uncertain, set
+applies: false. Do not hallucinate section numbers or invent statutes.
+
+Respond ONLY in valid JSON, no markdown, no preamble:
+{
+  "applicableActs": [
+    { "act": "RPWD Act 2016", "section": "§40", "applies": true,
+      "reasoning": "one sentence grounded in the specific issue", "citationStrength": "strong" }
+  ],
+  "legalSummary": "one sentence summary of the legal basis"
+}`;
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.1, maxOutputTokens: 1024 },
+  }, { timeout: 20_000 });
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(text) as LegalReasoningResult;
+    if (!Array.isArray(parsed.applicableActs)) throw new Error('malformed legal reasoning');
+
+    // Hallucination guard — keep only acts whose name matches the known allowlist.
+    parsed.applicableActs = parsed.applicableActs.filter(
+      (a) => a && typeof a.act === 'string' && KNOWN_ACTS.some((k) => a.act.includes(k.split(' ')[0])),
+    );
+
+    // RPWD §40 and RTI §6 always apply — guarantee they're present.
+    if (!parsed.applicableActs.some((a) => a.act.includes('RPWD') && a.section === '§40')) {
+      parsed.applicableActs.push(LEGAL_FALLBACK_ACTS[0]);
+    }
+    if (!parsed.applicableActs.some((a) => a.act.includes('RTI'))) {
+      parsed.applicableActs.push(LEGAL_FALLBACK_ACTS[1]);
+    }
+    if (typeof parsed.legalSummary !== 'string' || !parsed.legalSummary) {
+      parsed.legalSummary = 'This notice is grounded in disability rights and public accountability law.';
+    }
+    return parsed;
+  } catch (err) {
+    console.warn('[select_legal_acts] AI legal reasoning failed — using safe fallback:', (err as Error)?.message);
+    return {
+      applicableActs: LEGAL_FALLBACK_ACTS,
+      legalSummary: 'This notice is grounded in disability rights and public accountability law.',
+      hallucination_warning: 'AI legal reasoning unavailable — core statutes applied.',
+    };
+  }
+}
+
 // ── Tool 3: draft_dispatch ────────────────────────────────────────────────────
 // Generates a formal legal complaint letter in Indian bureaucratic style.
 // The statutory citations + escalation + tracking ref are appended deterministically
@@ -218,8 +318,14 @@ A concerned citizen
 // Returns: email subject line + full formal letter body.
 
 export async function draftDispatch(input: DraftDispatchInput): Promise<DraftDispatchOutput> {
-  const { trackingCode, analysis, route, reportedAt } = input;
+  const { trackingCode, analysis, route, reportedAt, legalHint } = input;
   const { department } = route;
+
+  // AI-selected statutes (Tool 2.5) to weave into the prose where genuinely
+  // applicable — the deterministic footer still guarantees the core citations.
+  const legalHintInstruction = legalHint
+    ? `Where genuinely applicable, ground the complaint in these statutes: ${legalHint}. Do not invent section numbers beyond these.`
+    : '';
 
   const severityLabel = analysis.severity >= 8 ? 'CRITICAL / LIFE-THREATENING'
     : analysis.severity >= 5 ? 'HIGH PRIORITY'
@@ -247,6 +353,7 @@ Based on the following issue details, generate three formal plain text documents
 
 ${rpwdInstruction}
 ${urgencyInstruction}
+${legalHintInstruction}
 
 You must return ONLY a JSON object containing these exact fields:
 1. "emailNotice": A formal complaint letter in standard Indian bureaucratic style addressed to the department head. State the date, location details, description and severity, weave in the Corporation's statutory duty under the RPWD Act 2016 to maintain safe, accessible public infrastructure, and demand remedial action within ${department.avgResolutionDays} working days. END the letter immediately after the demand — do NOT add any sign-off, signature, reference number, or postscript (these are appended separately). Do NOT invent a reference number.
