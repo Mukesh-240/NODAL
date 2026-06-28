@@ -3,8 +3,6 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
-  BarChart,
-  Bar,
   LineChart,
   Line,
   PieChart,
@@ -25,6 +23,7 @@ const ISSUE_COLORS: Record<string, string> = {
   'Damaged Road': '#6B7280',
   'Waste Dumping': '#F59E0B',
   'Broken Footpath': '#3B82F6',
+  'Waterlogging': '#06B6D4',
   'Damaged Streetlight': '#10B981',
 };
 
@@ -138,6 +137,7 @@ function InsightsContent() {
     name: CATEGORY_LABELS[cat.name as keyof typeof CATEGORY_LABELS] || cat.name,
     value: cat.count,
   }));
+  const maxIssueCount = Math.max(1, ...displayCategories.map((d) => d.value));
 
   const displayTrends = data.trendData.map((t) => ({
     week: typeof t.week === 'number' ? `Week ${t.week}` : t.week,
@@ -202,32 +202,39 @@ function InsightsContent() {
         {/* Charts grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg mb-xl">
           <section>
-            <h2 className="font-headline-md text-[18px] text-primary mb-md">Most Common Issues</h2>
-            <div className="bg-white rounded-2xl border border-gray-100 p-4">
-              <ResponsiveContainer width="100%" height={300} minWidth={300}>
-                <BarChart data={displayCategories} layout="vertical" margin={{ left: 8, right: 16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e2e1" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11, fill: '#46464a' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={132}
-                    interval={0}
-                    tick={{ fontSize: 11, fill: '#46464a' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    cursor={{ fill: '#f1edec' }}
-                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #c7c6ca', borderRadius: '12px' }}
-                  />
-                  <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={22}>
-                    {displayCategories.map((entry, index) => (
-                      <Cell key={index} fill={ISSUE_COLORS[entry.name] ?? '#9CA3AF'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <h2 className="font-headline-md text-[18px] text-primary">Most Common Issues</h2>
+            <p className="text-xs text-gray-400 mt-0.5 mb-4">
+              By report volume · last 30 days
+            </p>
+            <div className="bg-white rounded-2xl border border-gray-100 p-5">
+              <div className="space-y-3">
+                {displayCategories.map((item, i) => (
+                  <div key={item.name}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-400 w-4">
+                          {i + 1}
+                        </span>
+                        <span className="text-sm font-medium text-gray-950">
+                          {item.name}
+                        </span>
+                      </div>
+                      <span className="text-sm font-bold text-gray-950 tabular-nums">
+                        {item.value}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-2 rounded-full transition-all duration-700"
+                        style={{
+                          width: `${(item.value / maxIssueCount) * 100}%`,
+                          backgroundColor: ISSUE_COLORS[item.name] ?? '#9CA3AF',
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
 

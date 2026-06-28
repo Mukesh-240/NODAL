@@ -54,7 +54,7 @@ export async function analyzeImage(
       responseMimeType: 'application/json',
       temperature: 0.1, // Low temperature for consistent structured output
     },
-  });
+  }, { timeout: 25_000 }); // fail fast instead of hanging on a slow Gemini response
 
   const imagePart: Part = {
     inlineData: { data: imageBase64, mimeType: mimeType as 'image/jpeg' | 'image/png' | 'image/webp' },
@@ -181,7 +181,7 @@ Rules:
       temperature: 0.2,
       maxOutputTokens: 4096, // Room for all 3 documents — 1500 truncated the JSON
     },
-  });
+  }, { timeout: 25_000 });
 
   const result = await model.generateContent(prompt);
   const text = result.response.text().trim();

@@ -42,6 +42,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
+  compress: true,
+  poweredByHeader: false,
+  experimental: {
+    // Tree-shake recharts so the dashboard only ships the chart pieces it uses.
+    optimizePackageImports: ['recharts'],
+  },
   async headers() {
     return [
       {

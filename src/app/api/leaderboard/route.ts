@@ -24,7 +24,10 @@ export async function GET(request: NextRequest) {
       : effectiveScope === 'city' ? city!
       : 'All cities';
 
-    return NextResponse.json({ success: true, leaders, scope: effectiveScope, scopeLabel });
+    return NextResponse.json(
+      { success: true, leaders, scope: effectiveScope, scopeLabel },
+      { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' } }
+    );
   } catch (err) {
     console.error('[/api/leaderboard]', err);
     return NextResponse.json({ success: false, error: 'Failed to fetch leaderboard' }, { status: 500 });

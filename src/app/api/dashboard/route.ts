@@ -11,7 +11,10 @@ export async function GET(request: NextRequest) {
 
     const data = await getDashboardData(city || undefined);
 
-    return NextResponse.json({ success: true, ...data });
+    return NextResponse.json(
+      { success: true, ...data },
+      { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' } }
+    );
   } catch (err) {
     console.error('[/api/dashboard]', err);
     return NextResponse.json({ success: false, error: 'Failed to fetch dashboard data' }, { status: 500 });

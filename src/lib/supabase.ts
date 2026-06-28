@@ -101,7 +101,9 @@ export async function getIssueById(id: string): Promise<Issue | null> {
 }
 
 export async function getDashboardStats(city?: SupportedCity): Promise<DashboardStats> {
-  let query = supabase.from('issues').select('*');
+  // Only the columns the aggregation reads — avoids transferring dispatch_text,
+  // description, image_url, department for every row in a full-table scan.
+  let query = supabase.from('issues').select('status, resolved_at, rpwd_violation, created_at, category, city');
   if (city) query = query.eq('city', city);
 
   const { data: issues, error } = await query;
@@ -147,7 +149,8 @@ export async function getDashboardStats(city?: SupportedCity): Promise<Dashboard
 }
 
 export async function getDashboardData(city?: SupportedCity) {
-  let query = supabase.from('issues').select('*');
+  // Only the columns used for the heatmap, stats and category breakdown below.
+  let query = supabase.from('issues').select('latitude, longitude, severity, status, resolved_at, created_at, category');
   if (city) query = query.eq('city', city);
 
   const { data: issues, error } = await query;
