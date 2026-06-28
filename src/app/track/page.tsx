@@ -2,12 +2,23 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CATEGORY_LABELS, getSeverityLevel, SEVERITY_COLORS, IssueCategory } from '@/types';
+import {
+  CATEGORY_LABELS,
+  getSeverityLevel,
+  SEVERITY_COLORS,
+  getPriority,
+  PRIORITY_COLORS,
+  STATUS_META,
+  formatIssueDuration,
+  IssueCategory,
+  IssueStatus,
+} from '@/types';
+import { getSession } from '@/lib/session';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface TrackedIssue {
   tracking_code: string;
-  status: 'open' | 'in_progress' | 'resolved';
+  status: IssueStatus;
   category: IssueCategory;
   description: string;
   severity: number;
@@ -19,18 +30,39 @@ interface TrackedIssue {
   resolved_at: string | null;
 }
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  open: { label: 'Open', color: '#FB8C00' },
-  in_progress: { label: 'In Progress', color: '#1E88E5' },
-  resolved: { label: 'Resolved', color: '#43A047' },
-};
-
 function TrackContent() {
   const searchParams = useSearchParams();
   const [code, setCode] = useState('');
   const [issue, setIssue] = useState<TrackedIssue | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resolving, setResolving] = useState(false);
+  const [resolveMsg, setResolveMsg] = useState('');
+
+  // Citizen-confirmed resolution (item 6) — only the original reporter can mark
+  // this; the server validates the session against the stored reporter_session.
+  async function markResolved() {
+    if (!issue) return;
+    setResolving(true);
+    setResolveMsg('');
+    try {
+      const res = await fetch('/api/issues/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: issue.tracking_code, action: 'resolved', reporterSession: getSession() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setResolveMsg(data.error || 'Could not mark as resolved.');
+      } else {
+        setIssue({ ...issue, status: 'resolved', resolved_at: new Date().toISOString() });
+      }
+    } catch {
+      setResolveMsg('Could not mark as resolved. Please try again.');
+    } finally {
+      setResolving(false);
+    }
+  }
 
   async function lookup(rawCode: string) {
     const trimmed = rawCode.trim();
@@ -67,27 +99,29 @@ function TrackContent() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-zinc-200 px-8 py-6">
-        <h1 className="text-3xl font-semibold text-black">Track a Report</h1>
-        <p className="text-zinc-600 mt-1">Enter your tracking code to see the latest status.</p>
-      </header>
+    <div className="min-h-screen bg-background pt-xl pb-28 px-gutter">
+      <main className="max-w-[560px] mx-auto">
+        <header className="mb-xl">
+          <h1 className="font-headline-lg text-headline-lg text-primary tracking-tighter">Track a Report</h1>
+          <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
+            Enter your tracking code to see the latest status.
+          </p>
+        </header>
 
-      <main className="max-w-2xl mx-auto p-8">
         <form
           onSubmit={(e) => { e.preventDefault(); lookup(code); }}
-          className="flex gap-3 mb-8"
+          className="flex gap-sm mb-lg"
         >
           <input
             value={code}
             onChange={(e) => setCode(e.target.value)}
             placeholder="e.g. NDL-CHN-12345"
-            className="flex-1 px-4 py-3 border border-zinc-300 rounded-xl text-black uppercase tracking-wide focus:outline-none focus:border-black"
+            className="flex-1 h-12 px-md rounded-full bg-surface hairline-all text-primary uppercase tracking-wide font-stats-tabular text-stats-tabular placeholder:text-on-surface-variant placeholder:normal-case focus:outline-none focus:border-primary transition-colors"
           />
           <button
             type="submit"
             disabled={loading}
-            className="px-6 py-3 bg-black text-white rounded-xl font-medium disabled:opacity-50 flex items-center gap-2"
+            className="h-12 px-lg rounded-full bg-primary text-on-primary font-headline-md text-[15px] flex items-center gap-2 disabled:opacity-50 active:scale-[0.98] transition-transform"
           >
             <span className="material-symbols-outlined text-[20px]">search</span>
             Track
@@ -96,37 +130,32 @@ function TrackContent() {
 
         {loading && (
           <div className="text-center py-12">
-            <div className="w-10 h-10 border-4 border-zinc-200 border-t-black rounded-full animate-spin mx-auto mb-3"></div>
-            <p className="text-zinc-500">Looking up your report...</p>
+            <div className="w-10 h-10 border-4 border-surface-variant border-t-primary rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-on-surface-variant font-body-md">Looking up your report...</p>
           </div>
         )}
 
         {error && !loading && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-center">
+          <div className="animate-fade-up bg-error-container border border-error/20 rounded-xl p-md text-on-error-container text-center font-body-md">
             {error}
           </div>
         )}
 
         {issue && !loading && (
-          <div className="border border-zinc-200 rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
+          <div className="animate-fade-up bg-surface hairline-all rounded-xl p-lg shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center justify-between mb-lg">
               <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-400">Tracking Code</p>
-                <p className="text-xl font-bold text-black tracking-wider">{issue.tracking_code}</p>
+                <p className="font-label-caps text-label-caps text-on-surface-variant uppercase">Tracking Code</p>
+                <p className="font-stats-tabular text-[18px] text-primary tracking-wider mt-1">{issue.tracking_code}</p>
               </div>
-              <span
-                className="px-3 py-1 rounded-full text-sm font-medium text-white"
-                style={{ backgroundColor: STATUS_LABELS[issue.status]?.color || '#71717a' }}
-              >
-                {STATUS_LABELS[issue.status]?.label || issue.status}
-              </span>
+              <StatusPill status={issue.status} />
             </div>
 
-            <div className="space-y-4">
+            <div className="flex flex-col">
               <Row label="Issue">
                 {CATEGORY_LABELS[issue.category] || issue.category}
                 {issue.rpwd_violation && (
-                  <span className="ml-2 text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                  <span className="ml-2 font-label-caps text-[10px] bg-error-container text-on-error-container px-2 py-0.5 rounded-full uppercase">
                     RPWD Flagged
                   </span>
                 )}
@@ -134,10 +163,21 @@ function TrackContent() {
               <Row label="Description">{issue.description}</Row>
               <Row label="Severity">
                 <span
-                  className="font-semibold"
+                  className="font-stats-tabular font-semibold"
                   style={{ color: SEVERITY_COLORS[getSeverityLevel(issue.severity)] }}
                 >
                   {issue.severity}/10
+                </span>
+              </Row>
+              <Row label="Priority">
+                <span
+                  className="font-label-caps text-[10px] uppercase px-2 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: `${PRIORITY_COLORS[getPriority(issue.severity)]}1a`,
+                    color: PRIORITY_COLORS[getPriority(issue.severity)],
+                  }}
+                >
+                  {getPriority(issue.severity)}
                 </span>
               </Row>
               <Row label="Routed To">{issue.department}</Row>
@@ -147,6 +187,31 @@ function TrackContent() {
                 <Row label="Resolved">{new Date(issue.resolved_at).toLocaleDateString()}</Row>
               )}
             </div>
+
+            <p className="font-body-md text-[12px] text-on-surface-variant mt-md flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[15px]">schedule</span>
+              {formatIssueDuration(issue.created_at, issue.resolved_at)}
+            </p>
+
+            {/* Citizen-confirmed resolution (item 6) */}
+            {issue.status !== 'resolved' && (
+              <div className="mt-lg">
+                <button
+                  onClick={markResolved}
+                  disabled={resolving}
+                  className="w-full h-11 rounded-full bg-surface-container-lowest hairline-all text-primary font-headline-md text-[14px] flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform"
+                >
+                  <span className="material-symbols-outlined text-[18px]">task_alt</span>
+                  {resolving ? 'Marking…' : 'Mark as resolved'}
+                </button>
+                <p className="font-body-md text-[11px] text-on-surface-variant text-center mt-2">
+                  Only the original reporter can confirm resolution.
+                </p>
+                {resolveMsg && (
+                  <p className="font-body-md text-[12px] text-error text-center mt-1">{resolveMsg}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -154,11 +219,24 @@ function TrackContent() {
   );
 }
 
+function StatusPill({ status }: { status: IssueStatus }) {
+  const { label, color } = STATUS_META[status] || { label: status, color: '#77777b' };
+  return (
+    <div
+      className="flex items-center gap-1.5 px-3 py-1 rounded-full"
+      style={{ backgroundColor: `${color}1a` }}
+    >
+      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+      <span className="font-label-caps text-[10px] uppercase text-on-background">{label}</span>
+    </div>
+  );
+}
+
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex justify-between items-start gap-4 py-3 border-b border-zinc-100 last:border-0">
-      <span className="text-sm text-zinc-500 shrink-0">{label}</span>
-      <span className="text-sm text-black text-right">{children}</span>
+    <div className="flex justify-between items-start gap-4 py-md border-b border-outline-variant last:border-0">
+      <span className="font-body-md text-[14px] text-on-surface-variant shrink-0">{label}</span>
+      <span className="font-body-md text-[14px] text-primary text-right">{children}</span>
     </div>
   );
 }
@@ -166,7 +244,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export default function TrackPage() {
   return (
     <ErrorBoundary>
-      <Suspense fallback={<div className="p-8 text-zinc-500">Loading...</div>}>
+      <Suspense fallback={<div className="p-gutter text-on-surface-variant">Loading...</div>}>
         <TrackContent />
       </Suspense>
     </ErrorBoundary>

@@ -13,12 +13,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sanitizeForLogging } from '@/lib/logger';
-import { analyzeImage, draftDispatch, validateImageInput } from '@/lib/gemini';
-import { routeIssue, generateTrackingCode, isInIndia, getCityOfficialsCC, routingMatrix } from '@/lib/routingMatrix';
+import { analyzeImage, draftDispatch, validateImageInput, buildLegalFooter } from '@/lib/gemini';
+import { routeIssue, generateTrackingCode, isInIndia, routingMatrix } from '@/lib/routingMatrix';
+import { buildDispatchChain, resolveSendTargets, formatCopiesFooter } from '@/lib/recipients';
 import { insertIssue, uploadIssueImage, upsertCivicUser } from '@/lib/supabase';
 import { sendConfirmationEmail, sendDispatchViaResend } from '@/lib/email';
-import { sendGmailDispatch } from '@/lib/gmail';
-import { AnalyzeRequest, AnalyzeResponse } from '@/types';
+import { AnalyzeRequest, AnalyzeResponse, SupportedCity } from '@/types';
 
 // ── Input Validation Schema (Zod) ─────────────────────────────────────────────
 const AnalyzeRequestSchema = z.object({
@@ -37,10 +37,10 @@ const AnalyzeRequestSchema = z.object({
     .email('Invalid email')
     .max(254, 'Email too long')
     .optional(),
-  gmailAccessToken: z.string()
-    .max(2048, 'Token too long')
-    .optional(),
   reporterSession: z.string().uuid('Invalid session ID'),
+  // Citizen-confirmed routing (item 3) — optional overrides for city/ward.
+  cityOverride: z.enum(['Chennai', 'Bengaluru', 'Mumbai', 'Delhi']).optional(),
+  wardOverride: z.string().max(120).optional(),
 });
 
 // ── Rate Limiting (in-memory, resets on server restart) ───────────────────────
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { imageBase64, mimeType, gpsLat, gpsLng, citizenEmail, gmailAccessToken, reporterSession } = body;
+  const { imageBase64, mimeType, gpsLat, gpsLng, citizenEmail, reporterSession, cityOverride, wardOverride } = body;
 
   // ── GPS Validation ──────────────────────────────────────────────────────────
   if (!isInIndia(gpsLat, gpsLng)) {
@@ -188,7 +188,10 @@ export async function POST(request: NextRequest) {
   try {
     logTool('route_issue', 'start');
     const t2 = Date.now();
-    route = await routeIssue(gpsLat, gpsLng, analysis.category);
+    route = await routeIssue(gpsLat, gpsLng, analysis.category, {
+      city: cityOverride as SupportedCity | undefined,
+      ward: wardOverride,
+    });
     logTool('route_issue', 'done', Date.now() - t2);
   } catch (err) {
     logTool('route_issue', 'error');
@@ -199,6 +202,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Severity-based accountability chain (dept + ward officer; +commissioner when
+  // High). Built here since it needs both the routing and the severity score.
+  const chain = buildDispatchChain({
+    city: route.city,
+    ward: route.ward,
+    department: route.department,
+    severity: analysis.severity,
+  });
+
+  // Human-readable NODAL Tracking Ref — generated here (before drafting) so the
+  // dispatch documents cite it instead of the internal UUID.
+  const trackingCode = generateTrackingCode(route.city);
+
   // ════════════════════════════════════════════════════════════════════════════
   // TOOL 3: draft_dispatch — Gemini 1.5 Pro (text generation)
   // ════════════════════════════════════════════════════════════════════════════
@@ -208,6 +224,7 @@ export async function POST(request: NextRequest) {
     const t3 = Date.now();
     dispatch = await draftDispatch({
       issueId,
+      trackingCode,
       analysis,
       route,
       reportedAt: new Date().toISOString(),
@@ -218,11 +235,11 @@ export async function POST(request: NextRequest) {
     console.error('[draft_dispatch] Error:', err);
     // Non-fatal: generate a basic dispatch if Gemini fails here
     dispatch = {
-      subject: `[NODAL-${issueId}] Civic Issue Report — ${route.city}`,
-      emailNotice: `A civic issue (${analysis.category}) has been reported at ${route.ward}, ${route.city} with severity ${analysis.severity}/10. Reference: ${issueId}. Please investigate and take necessary action within ${route.department.avgResolutionDays} working days.`,
-      rtiApplication: `RTI Request under Section 6(1) regarding the civic issue reported at ${route.ward}, ${route.city} (Reference: ${issueId}). Please provide the status of contract work, budget, and engineers assigned for this street.`,
+      subject: `[${trackingCode}] Civic Issue Report — ${route.city}`,
+      emailNotice: `A civic issue (${analysis.category}) has been reported at ${route.ward}, ${route.city} with severity ${analysis.severity}/10. Please investigate and take necessary remedial action within ${route.department.avgResolutionDays} working days.${buildLegalFooter(analysis, route, trackingCode)}`,
+      rtiApplication: `RTI Request under Section 6(1) regarding the civic issue reported at ${route.ward}, ${route.city} (NODAL Tracking Ref: ${trackingCode}). Please provide the status of contract work, budget, and engineers assigned for this street.`,
       rpwdComplaint: analysis.rpwdViolation
-        ? `RPWD Act 2016 Section 40 accessibility grievance regarding the barrier reported at ${route.ward}, ${route.city} (Reference: ${issueId}). Under the law, the authority has a 30-day statutory response deadline.`
+        ? `RPWD Act 2016 Section 40 accessibility grievance regarding the barrier reported at ${route.ward}, ${route.city} (NODAL Tracking Ref: ${trackingCode}). Under the law, the authority has a 30-day statutory response deadline.`
         : '',
     };
   }
@@ -230,14 +247,12 @@ export async function POST(request: NextRequest) {
   // ════════════════════════════════════════════════════════════════════════════
   // TOOL 4: log_to_database — Supabase PostgreSQL
   // ════════════════════════════════════════════════════════════════════════════
-  let trackingCode: string;
   try {
     logTool('log_to_database', 'start');
     const t4 = Date.now();
 
     // Upload image to Supabase Storage
     const imageUrl = await uploadIssueImage(imageBase64, mimeType, issueId);
-    trackingCode = generateTrackingCode(route.city);
 
     // Insert the full issue record
     await insertIssue({
@@ -257,8 +272,8 @@ export async function POST(request: NextRequest) {
       department: route.department.name,
       dept_email: route.department.email,
       dispatch_text: dispatch.emailNotice,
-      rti_text: dispatch.rtiApplication,
-      rpwd_grievance_text: dispatch.rpwdComplaint,
+      // rti_text / rpwd_grievance_text intentionally not written — the live
+      // issues table lacks those columns. The full text is still emailed.
       status: 'open',
       reporter_session: reporterSession,
     });
@@ -283,74 +298,84 @@ export async function POST(request: NextRequest) {
   try {
     const t5 = Date.now();
 
-    // CC officials list
-    const ccOfficials = getCityOfficialsCC(route.city);
+    // Resolve the severity-based chain to actual send addresses. Demo →
+    // { to: testInbox, cc: [testInbox] }; live → { to: deptEmail, cc: [] } since
+    // ward/commissioner have no verified address (never invented).
+    const { to: deptTo, cc: deptCc } = resolveSendTargets(chain);
+    const demo = chain.mode === 'demo';
+    const sink = process.env.DISPATCH_TEST_INBOX || null;
+    // RPWD goes to the accessibility desk; demo overrides to the test inbox.
+    const accTo = demo ? sink : routingMatrix[route.city]['broken_ramp_accessibility'].email;
 
-    // Demo-safe routing: if DISPATCH_TEST_INBOX is set, redirect every dispatch
-    // to that one controlled inbox (and drop the CC) so nothing reaches the
-    // unverified gov addresses. The intended real recipient is tagged in the
-    // body. Empty var = live mode using the routing-matrix addresses.
-    const sink = process.env.DISPATCH_TEST_INBOX;
-    const accReal = routingMatrix[route.city]['broken_ramp_accessibility'].email;
-    const deptTo = sink || route.department.email;
-    const deptCc = sink ? undefined : ccOfficials;
-    const accTo = sink || accReal;
-    const tag = (intended: string, b: string) =>
-      sink ? `[DEMO — intended recipient: ${intended}]\n\n${b}` : b;
-
-    // Transport switch: send from the citizen's Gmail if they authorized it,
-    // otherwise fall back to a server-side Resend send (so the dispatch still
-    // fires for anyone — e.g. judges who can't be Google test users).
+    // Server-side dispatch always goes via Resend (demo-safe, works for judges).
+    // The citizen ALSO gets a Gmail compose deep-link on the confirmation screen
+    // to send the formal notice themselves (human-in-the-loop).
     const sendDispatch = (to: string, subject: string, body: string, cc?: string[]) =>
-      gmailAccessToken
-        ? sendGmailDispatch({ accessToken: gmailAccessToken, from: citizenEmail, to, cc, subject, body })
-        : sendDispatchViaResend({ to, cc, subject, body, replyTo: citizenEmail });
+      sendDispatchViaResend({ to, cc, subject, body, replyTo: citizenEmail });
 
-    // Fire Email 1 (Formal Notice), Email 2 (RTI Application), and Email 3 (Resend Confirmation) in parallel
-    const emailPromises: Promise<any>[] = [
-      // 1. Formal Notice to Department Head (CC: Commissioner + District Collector)
-      sendDispatch(
-        deptTo,
-        dispatch.subject,
-        tag(`${route.department.email} (cc: ${ccOfficials.join(', ')})`, dispatch.emailNotice),
-        deptCc,
-      ),
-      // 2. RTI Application to PIO (falls back to department email)
-      sendDispatch(
-        deptTo,
-        `[RTI Act 2005] Application under Section 6(1) — Ref: ${trackingCode!}`,
-        tag(route.department.email, dispatch.rtiApplication),
-      ),
-      // 3. Resend Confirmation to Citizen
-      sendConfirmationEmail({
-        to: citizenEmail,
-        trackingCode: trackingCode!,
-        issueId,
-        analysis,
-        route,
-        dispatch,
-      }),
-    ];
+    // Labeled tasks so logs stay correct regardless of which emails actually fire.
+    const tasks: { label: string; promise: Promise<unknown> }[] = [];
 
-    // 4. RPWD Grievance to Accessibility Officer (if accessibility violation detected)
-    if (analysis.rpwdViolation && dispatch.rpwdComplaint) {
-      emailPromises.push(
-        sendDispatch(
-          accTo,
-          `[RPWD Act 2016] Section 40 Accessibility Complaint — Ref: ${trackingCode!}`,
-          tag(accReal, dispatch.rpwdComplaint),
-        )
-      );
+    // 1. Formal Notice to the department, copying the accountability chain. The
+    //    "Copies to:" footer always lists the real intended roles. Skipped (not
+    //    invented) if there's no verified send target.
+    if (deptTo) {
+      tasks.push({
+        label: 'Formal Notice',
+        promise: sendDispatch(
+          deptTo,
+          dispatch.subject,
+          dispatch.emailNotice + formatCopiesFooter(chain),
+          deptCc.length ? deptCc : undefined,
+        ),
+      });
+      // 2. RTI Application to PIO (same primary recipient, no chain cc).
+      tasks.push({
+        label: 'RTI Application',
+        promise: sendDispatch(
+          deptTo,
+          `[RTI Act 2005] Application under Section 6(1) — Ref: ${trackingCode!}`,
+          dispatch.rtiApplication,
+        ),
+      });
+    } else {
+      console.warn('[notify_citizen] No verified dispatch target (live mode, unknown dept) — notice + RTI skipped.');
     }
 
-    const results = await Promise.allSettled(emailPromises);
+    // 3. Resend Confirmation to Citizen — only if they gave an email.
+    if (citizenEmail) {
+      tasks.push({
+        label: 'Resend Confirmation',
+        promise: sendConfirmationEmail({
+          to: citizenEmail,
+          trackingCode: trackingCode!,
+          issueId,
+          analysis,
+          route,
+          dispatch,
+          chain,
+        }),
+      });
+    } else {
+      console.warn('[notify_citizen] No citizen email provided — confirmation copy skipped.');
+    }
+
+    // 4. RPWD Grievance to Accessibility Officer (if accessibility violation detected)
+    if (analysis.rpwdViolation && dispatch.rpwdComplaint && accTo) {
+      tasks.push({
+        label: 'RPWD Grievance',
+        promise: sendDispatch(
+          accTo,
+          `[RPWD Act 2016] Section 40 Accessibility Complaint — Ref: ${trackingCode!}`,
+          dispatch.rpwdComplaint,
+        ),
+      });
+    }
+
+    const results = await Promise.allSettled(tasks.map((t) => t.promise));
 
     results.forEach((result, idx) => {
-      let emailLabel = '';
-      if (idx === 0) emailLabel = 'Formal Notice';
-      else if (idx === 1) emailLabel = 'RTI Application';
-      else if (idx === 2) emailLabel = 'Resend Confirmation';
-      else if (idx === 3) emailLabel = 'RPWD Grievance';
+      const emailLabel = tasks[idx].label;
 
       if (result.status === 'rejected') {
         console.error(`[notify_citizen] ${emailLabel} failed:`, result.reason);
@@ -377,6 +402,7 @@ export async function POST(request: NextRequest) {
     analysis,
     route,
     dispatch,
+    chain,
     pointsEarned: 50,
   };
 

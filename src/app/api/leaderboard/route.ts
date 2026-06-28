@@ -1,21 +1,30 @@
 // ─── /api/leaderboard ─────────────────────────────────────────────────────────
-// civic_users is service-role-only under RLS, so this runs server-side and
-// returns a safe public subset (no session ids).
-import { NextResponse } from 'next/server';
-import { getLeaderboard } from '@/lib/supabase';
+// Scope-aware (My Ward · My City · All). Ranks from the issues table within scope,
+// joined to civic_users for names. civic_users is service-role-only under RLS, so
+// this runs server-side and returns a safe public subset (no session ids).
+import { NextRequest, NextResponse } from 'next/server';
+import { getScopedLeaderboard, LeaderScope } from '@/lib/supabase';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const users = await getLeaderboard();
-    const leaders = users.map((u, i) => ({
-      rank: i + 1,
-      display_name: u.display_name || 'Anonymous Citizen',
-      city: u.city,
-      total_points: u.total_points,
-      total_reports: u.total_reports,
-      badge_level: u.badge_level,
-    }));
-    return NextResponse.json({ success: true, leaders });
+    const { searchParams } = new URL(request.url);
+    const scopeParam = searchParams.get('scope');
+    const scope: LeaderScope = scopeParam === 'city' || scopeParam === 'all' ? scopeParam : 'ward';
+    const city = searchParams.get('city') || undefined;
+    const ward = searchParams.get('ward') || undefined;
+
+    // Ward scope needs both city + ward; fall back to city (or all) otherwise.
+    const effectiveScope: LeaderScope =
+      scope === 'ward' && (!city || !ward) ? (city ? 'city' : 'all') : scope;
+
+    const leaders = await getScopedLeaderboard({ scope: effectiveScope, city, ward });
+
+    const scopeLabel =
+      effectiveScope === 'ward' ? `${ward}, ${city}`
+      : effectiveScope === 'city' ? city!
+      : 'All cities';
+
+    return NextResponse.json({ success: true, leaders, scope: effectiveScope, scopeLabel });
   } catch (err) {
     console.error('[/api/leaderboard]', err);
     return NextResponse.json({ success: false, error: 'Failed to fetch leaderboard' }, { status: 500 });

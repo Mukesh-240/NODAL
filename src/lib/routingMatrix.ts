@@ -245,16 +245,6 @@ export const routingMatrix: RoutingMatrix = {
   },
 };
 
-export function getCityOfficialsCC(city: SupportedCity): string[] {
-  const ccEmails: Record<SupportedCity, string[]> = {
-    Chennai: ['commissioner@chennaicorporation.gov.in', 'collrchn@nic.in'],
-    Bengaluru: ['comm@bbmp.gov.in', 'deo.bangaloreu@gmail.com'],
-    Mumbai: ['mc@mcgm.gov.in', 'collector.mumbaicity@maharashtra.gov.in'],
-    Delhi: ['commissioner@mcd.nic.in', 'dmcentral@nic.in'],
-  };
-  return ccEmails[city] || [];
-}
-
 // ── City Detection from GPS ───────────────────────────────────────────────────
 export function detectCityFromGPS(lat: number, lng: number): SupportedCity | null {
   for (const [city, bounds] of Object.entries(CITY_BOUNDS)) {
@@ -287,8 +277,19 @@ const geocodeCache = new Map<string, { city: SupportedCity; ward: string }>();
 export async function routeIssue(
   lat: number,
   lng: number,
-  category: IssueCategory
+  category: IssueCategory,
+  overrides?: { city?: SupportedCity; ward?: string }
 ): Promise<RouteResult> {
+  // Citizen-confirmed routing (item 3): if the user corrected the city/ward on
+  // the confirmation card, trust it and skip geocoding entirely.
+  if (overrides?.city) {
+    return {
+      city: overrides.city,
+      ward: overrides.ward || 'Central Area',
+      department: routingMatrix[overrides.city][category],
+    };
+  }
+
   const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}`;
   const cached = geocodeCache.get(cacheKey);
 
@@ -350,6 +351,10 @@ export async function routeIssue(
 }
 
 // ── Generate Tracking Code ────────────────────────────────────────────────────
+// Human-readable, honest NODAL ref: NDL-<CITY>-<MMDD>-<4 uppercase alnum>,
+// e.g. NDL-CHN-0427-1A2B. Not a government number — labelled "NODAL Tracking Ref"
+// in the UI/email. ponytail: the DB's UNIQUE(tracking_code) is the collision
+// backstop (4 chars over a single day = vanishingly small clash risk).
 export function generateTrackingCode(city: SupportedCity): string {
   const cityCode: Record<SupportedCity, string> = {
     Chennai: 'CHN',
@@ -357,6 +362,10 @@ export function generateTrackingCode(city: SupportedCity): string {
     Mumbai: 'MUM',
     Delhi: 'DEL',
   };
-  const random = Math.floor(Math.random() * 90000) + 10000;
-  return `NDL-${cityCode[city]}-${random}`;
+  const now = new Date();
+  const mmdd = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous 0/O/1/I
+  let suffix = '';
+  for (let i = 0; i < 4; i++) suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return `NDL-${cityCode[city]}-${mmdd}-${suffix}`;
 }

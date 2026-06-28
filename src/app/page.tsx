@@ -2,57 +2,33 @@
 
 import { useState, useRef } from 'react';
 import Link from 'next/link';
-import Script from 'next/script';
-import { CATEGORY_LABELS, getSeverityLevel, SEVERITY_COLORS, AnalyzeResponse } from '@/types';
+import {
+  CATEGORY_LABELS,
+  getSeverityLevel,
+  SEVERITY_COLORS,
+  getPriority,
+  PRIORITY_COLORS,
+  STATUS_META,
+  CITY_CORPORATION,
+  formatIssueDuration,
+  AnalyzeResponse,
+  SupportedCity,
+} from '@/types';
+import { getSession } from '@/lib/session';
+import { detectCityFromGPS } from '@/lib/routingMatrix';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
-// ── Gmail OAuth (Google Identity Services token flow) ─────────────────────────
-// Returns a short-lived access token for the gmail.send scope, or undefined if
-// the user cancels or no client id is configured (graceful fallback: the report
-// still saves, only the official dispatch is skipped).
-/* eslint-disable @typescript-eslint/no-explicit-any */
-let tokenClient: any = null;
-let resolveToken: ((t: string | undefined) => void) | null = null;
+const CITIES: SupportedCity[] = ['Chennai', 'Bengaluru', 'Mumbai', 'Delhi'];
 
-function requestGmailToken(): Promise<string | undefined> {
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  const g = (window as any).google;
-  if (!clientId || !g?.accounts?.oauth2) return Promise.resolve(undefined);
-  if (!tokenClient) {
-    tokenClient = g.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: 'https://www.googleapis.com/auth/gmail.send openid email',
-      callback: (resp: any) => { resolveToken?.(resp?.access_token); resolveToken = null; },
-      error_callback: () => { resolveToken?.(undefined); resolveToken = null; },
-    });
-  }
-  return new Promise((resolve) => {
-    resolveToken = resolve;
-    tokenClient.requestAccessToken(); // must stay in the click gesture (no await before this)
-  });
-}
-/* eslint-enable @typescript-eslint/no-explicit-any */
-
-async function fetchGoogleEmail(token: string): Promise<string | undefined> {
-  try {
-    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    return r.ok ? (await r.json()).email : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// Persistent anonymous session id (used for points / civic_users).
-function getSession(): string {
-  if (typeof window === 'undefined') return '';
-  let s = localStorage.getItem('nodal_session');
-  if (!s) {
-    s = crypto.randomUUID();
-    localStorage.setItem('nodal_session', s);
-  }
-  return s;
+// "Copies to:" footer appended to the notice the citizen sends — mirrors the
+// server-side formatCopiesFooter (kept inline so the server recipients module
+// stays out of the client bundle).
+function copiesFooter(chain: AnalyzeResponse['chain']): string {
+  const roles = [chain.to.role, ...chain.cc.map((c) => c.role)].join(', ');
+  const demoNote = chain.mode === 'demo'
+    ? '\n[Demo: dispatch routed to a test inbox; the addresses above are the real intended roles.]'
+    : '';
+  return `\n\n— Copies to: ${roles}${demoNote}`;
 }
 
 // Downscale to keep base64 under the API's 10MB cap and speed up upload.
@@ -89,7 +65,48 @@ function getPosition(): Promise<GeolocationPosition> {
   });
 }
 
-type Phase = 'idle' | 'preview' | 'working' | 'done' | 'error';
+// Reverse-geocode client-side (Nominatim is CORS-friendly). City is taken from
+// our bounding boxes; ward/area from Nominatim. Always resolves to something so
+// the confirmation card can render even if the network call fails.
+// ponytail: client Nominatim, no key; honors their public rate limit at demo scale.
+async function reverseGeocode(lat: number, lng: number): Promise<{ address: string; city: SupportedCity; ward: string }> {
+  const city = (detectCityFromGPS(lat, lng) || 'Chennai') as SupportedCity;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`);
+    if (r.ok) {
+      const d = await r.json();
+      const a = d.address || {};
+      const ward = a.suburb || a.neighbourhood || a.quarter || a.city_district || a.city || 'Central Area';
+      return { address: d.display_name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`, city, ward };
+    }
+  } catch {
+    // fall through to coordinate-only address
+  }
+  return { address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, city, ward: 'Central Area' };
+}
+
+type Phase = 'idle' | 'preview' | 'confirm' | 'working' | 'done' | 'error';
+
+interface DetectedLocation {
+  lat: number;
+  lng: number;
+  address: string;
+  city: SupportedCity;
+  ward: string;
+  gpsOk: boolean;
+}
+
+// Stages shown in the loading screen. They advance on a timer to give a
+// one-by-one sense of progress through the (mostly server-side) pipeline, and
+// the screen snaps to the confirmation when the request actually returns.
+const STAGES = [
+  { label: 'Reading the photo', sub: 'Gemini vision is identifying the issue' },
+  { label: 'Confirming the routing', sub: 'Matching your location to ward & department' },
+  { label: 'Drafting formal notice', sub: 'Complaint, RTI & accessibility letters' },
+  { label: 'Filing the record', sub: 'Saving your report and tracking code' },
+  { label: 'Preparing dispatch', sub: 'Getting the notice ready to send' },
+];
+const STAGE_MS = 2600; // time each stage is shown before advancing
 
 function ReportContent() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -97,9 +114,14 @@ function ReportContent() {
   const [previewUrl, setPreviewUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [email, setEmail] = useState('');
-  const [statusMsg, setStatusMsg] = useState('');
+  const [step, setStep] = useState(0);
   const [error, setError] = useState('');
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  const [loc, setLoc] = useState<DetectedLocation | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [noticeSent, setNoticeSent] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -110,81 +132,180 @@ function ReportContent() {
     setError('');
   }
 
-  async function submit() {
-    if (!file) return;
+  // Step into the location-confirmation phase: detect GPS + reverse-geocode, then
+  // let the user verify/correct the city & ward before anything is filed (item 3).
+  async function detectLocation() {
+    setLocating(true);
     setError('');
-    // Request the Gmail token first — requestAccessToken must run inside the
-    // click gesture (before any await) or the popup gets blocked.
-    const tokenPromise = requestGmailToken();
-    setPhase('working');
+    let lat = 13.0827, lng = 80.2707, gpsOk = false;
     try {
-      setStatusMsg('Authorizing Gmail (optional)...');
-      const token = await tokenPromise;
-
-      let emailToUse = email.trim();
-      if (token && !emailToUse) {
-        emailToUse = (await fetchGoogleEmail(token)) || '';
-        if (emailToUse) setEmail(emailToUse);
-      }
-
-      setStatusMsg('Getting your location...');
       const pos = await getPosition();
+      lat = pos.coords.latitude;
+      lng = pos.coords.longitude;
+      gpsOk = true;
+    } catch {
+      // GPS denied/unavailable (e.g. phone on non-HTTPS LAN). Fall back to Chennai
+      // centre — the user can correct the city/ward manually on the next card.
+    }
+    const geo = await reverseGeocode(lat, lng);
+    setLoc({ lat, lng, ...geo, gpsOk });
+    setLocating(false);
+    setPhase('confirm');
+  }
 
-      setStatusMsg('Processing photo...');
+  async function submit() {
+    if (!file || !loc) return;
+    setError('');
+    setStep(0);
+    setPhase('working');
+    if (stepTimer.current) clearInterval(stepTimer.current);
+    stepTimer.current = setInterval(() => {
+      setStep((s) => Math.min(s + 1, STAGES.length - 1));
+    }, STAGE_MS);
+    try {
       const { base64, mimeType } = await fileToBase64(file);
 
-      setStatusMsg('Analyzing & dispatching (this can take ~15s)...');
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageBase64: base64,
           mimeType,
-          gpsLat: pos.coords.latitude,
-          gpsLng: pos.coords.longitude,
-          citizenEmail: emailToUse || undefined,
-          gmailAccessToken: token || undefined,
+          gpsLat: loc.lat,
+          gpsLng: loc.lng,
+          citizenEmail: email.trim() || undefined,
           reporterSession: getSession(),
+          cityOverride: loc.city,
+          wardOverride: loc.ward,
         }),
       });
       const data: AnalyzeResponse = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Something went wrong. Please try again.');
       }
+      setStep(STAGES.length); // mark every stage complete
+      setNoticeSent(false);
       setResult(data);
       setPhase('done');
+      // Remember the confirmed location so the leaderboard can default to "My Ward".
+      try {
+        localStorage.setItem('nodal_city', loc.city);
+        localStorage.setItem('nodal_ward', loc.ward);
+      } catch { /* ignore storage errors */ }
     } catch (err) {
       const raw = (err as Error)?.message || '';
-      const msg = /denied|location|permission|geolocation/i.test(raw)
-        ? 'Location access is required to route your report. Please enable it and try again.'
-        : raw || 'Report failed. Please try again.';
-      setError(msg);
+      setError(raw || 'Report failed. Please try again.');
       setPhase('error');
+    } finally {
+      if (stepTimer.current) {
+        clearInterval(stepTimer.current);
+        stepTimer.current = null;
+      }
     }
   }
 
+  // Item 1 — human-in-the-loop dispatch. Build a Gmail compose deep-link prefilled
+  // with the routed department, subject and full notice; the citizen taps Send
+  // themselves. Marks the issue "Notice Sent" (we can't confirm delivery).
+  // Actual send targets from the chain — the test inbox in demo mode, the dept
+  // email in live (ward/commissioner have no verified address, so cc is empty
+  // in live). Never opens a compose to a guessed government address.
+  function chainTargets() {
+    // Use ONLY the chain's resolved sendTo — in demo that's the test inbox, in
+    // live it's the dept email. Never fall back to route.department.email, or a
+    // missing demo sink would leak the real gov address into the compose window.
+    const to = result?.chain.to.sendTo ?? '';
+    const cc = [...new Set((result?.chain.cc.map((c) => c.sendTo) || []).filter((e): e is string => !!e))];
+    return { to, cc };
+  }
+
+  // Save the uploaded photo to the device so the citizen can attach it in Gmail
+  // (Gmail compose deep-links can't carry attachments).
+  function downloadPhoto() {
+    if (!file || !result) return;
+    const ext = (file.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = `nodal-${result.trackingCode}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+
+  function copyNotice() {
+    if (!result) return;
+    const text = `Subject: ${result.dispatch.subject}\n\n${result.dispatch.emailNotice}${copiesFooter(result.chain)}`;
+    navigator.clipboard?.writeText(text).then(
+      () => { setCopied(true); setTimeout(() => setCopied(false), 2000); },
+      () => {},
+    );
+  }
+
+  function openInGmail() {
+    if (!result) return;
+    const { to, cc } = chainTargets();
+    const su = result.dispatch.subject;
+    const body = result.dispatch.emailNotice + copiesFooter(result.chain);
+    if (!to) {
+      console.warn('[gmail] No department email on route — cannot prefill recipient.', result.route);
+    }
+    const gmailUrl =
+      `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}` +
+      (cc.length ? `&cc=${encodeURIComponent(cc.join(','))}` : '') +
+      `&su=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`;
+
+    // Save the photo so it's ready to attach, then open the prefilled compose.
+    downloadPhoto();
+
+    // Mark Notice Sent (fire-and-forget — must not block opening Gmail).
+    fetch('/api/issues/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: result.trackingCode, action: 'notice_sent' }),
+    }).catch(() => {});
+    setNoticeSent(true);
+    window.open(gmailUrl, '_blank', 'noopener');
+  }
+
+  function mailtoLink(): string {
+    if (!result) return '#';
+    const { to, cc } = chainTargets();
+    const body = result.dispatch.emailNotice + copiesFooter(result.chain);
+    const ccParam = cc.length ? `&cc=${encodeURIComponent(cc.join(','))}` : '';
+    return `mailto:${to}?subject=${encodeURIComponent(result.dispatch.subject)}${ccParam}&body=${encodeURIComponent(body)}`;
+  }
+
   function reset() {
+    if (stepTimer.current) {
+      clearInterval(stepTimer.current);
+      stepTimer.current = null;
+    }
     setPhase('idle');
+    setStep(0);
     setFile(null);
     setPreviewUrl('');
     setResult(null);
+    setLoc(null);
+    setNoticeSent(false);
     setError('');
     if (fileRef.current) fileRef.current.value = '';
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
-      <header className="px-8 pt-10 pb-6">
-        <h1 className="text-4xl font-bold text-black tracking-tight">NODAL</h1>
-        <p className="text-zinc-600 mt-1">Snap a civic issue. We classify it, route it to the right department, and file the formal notice.</p>
+    <div className="min-h-screen bg-background pb-28">
+      <header className="px-gutter pt-xl pb-lg max-w-[560px] mx-auto">
+        <h1 className="font-display-lg text-[40px] font-bold tracking-tighter text-primary">NODAL</h1>
+        <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
+          Snap a civic issue. We classify it, route it to the right department, and prepare the formal notice.
+        </p>
       </header>
 
-      <main className="max-w-xl mx-auto px-8 pb-12">
+      <main className="max-w-[560px] mx-auto px-gutter">
         <input
           ref={fileRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/*"
           capture="environment"
           onChange={onPick}
           className="hidden"
@@ -192,105 +313,396 @@ function ReportContent() {
 
         {/* IDLE */}
         {phase === 'idle' && (
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="w-full aspect-square rounded-3xl border-2 border-dashed border-zinc-300 flex flex-col items-center justify-center gap-3 text-zinc-500 hover:border-black hover:text-black transition-colors"
-          >
-            <span className="material-symbols-outlined text-[64px]">photo_camera</span>
-            <span className="font-medium">Take or upload a photo</span>
-          </button>
+          <div className="animate-fade-up">
+            {/* Primary CTA */}
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="w-full rounded-xl bg-primary text-on-primary px-lg py-xl flex flex-col items-center justify-center gap-sm active:scale-[0.99] transition-transform"
+            >
+              <span className="material-symbols-outlined text-[56px]">photo_camera</span>
+              <span className="font-headline-md text-[18px]">Report an issue</span>
+              <span className="font-body-md text-[13px] opacity-80">Take or upload a photo</span>
+            </button>
+
+            {/* How it works */}
+            <section className="mt-xl">
+              <h2 className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-md">How it works</h2>
+              <div className="flex flex-col gap-sm">
+                {[
+                  { icon: 'photo_camera', title: 'Snap a photo', body: 'Capture the issue — pothole, broken footpath, flooding, a blocked ramp.' },
+                  { icon: 'neurology', title: 'AI classifies & routes', body: 'Gemini grades severity and finds the exact department responsible.' },
+                  { icon: 'mail', title: 'You send the notice', body: 'A formal complaint + RTI is drafted for you to send from your own Gmail, with a tracking code.' },
+                ].map((s, i) => (
+                  <div key={s.title} className="flex items-start gap-md bg-surface hairline-all rounded-xl p-md">
+                    <div className="shrink-0 w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center font-stats-tabular text-[14px]">
+                      {i + 1}
+                    </div>
+                    <div>
+                      <p className="font-headline-md text-[15px] text-primary flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">{s.icon}</span>
+                        {s.title}
+                      </p>
+                      <p className="font-body-md text-[13px] text-on-surface-variant mt-0.5">{s.body}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* What NODAL handles */}
+            <section className="mt-xl">
+              <h2 className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-md">What NODAL handles</h2>
+              <div className="flex flex-wrap gap-sm">
+                {['Damaged roads', 'Broken footpaths', 'Waterlogging', 'Streetlights', 'Waste dumping', 'Accessibility / RPWD', 'Dangerous excavation'].map((c) => (
+                  <span key={c} className="font-stats-tabular text-[12px] text-primary bg-surface hairline-all rounded-full px-md py-sm">
+                    {c}
+                  </span>
+                ))}
+              </div>
+            </section>
+
+            {/* Coverage */}
+            <section className="mt-xl">
+              <h2 className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-md">Where we operate</h2>
+              <div className="grid grid-cols-2 gap-sm">
+                {CITIES.map((city) => (
+                  <div key={city} className="flex items-center gap-2 bg-surface hairline-all rounded-xl p-md">
+                    <span className="material-symbols-outlined text-[18px] text-on-surface-variant">location_city</span>
+                    <span className="font-headline-md text-[14px] text-primary">{city}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
         )}
 
         {/* PREVIEW */}
         {phase === 'preview' && (
-          <div>
+          <div className="animate-fade-up">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={previewUrl} alt="preview" className="w-full rounded-3xl mb-4 object-cover max-h-96" />
+            <img src={previewUrl} alt="preview" className="w-full rounded-xl mb-md object-cover max-h-96 hairline-all" />
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Your email (optional — for the confirmation copy)"
-              className="w-full px-4 py-3 border border-zinc-300 rounded-xl text-black mb-3 focus:outline-none focus:border-black"
+              className="w-full h-12 px-md rounded-full bg-surface hairline-all text-primary font-body-md placeholder:text-on-surface-variant mb-sm focus:outline-none focus:border-primary transition-colors"
             />
-            <div className="flex gap-3">
-              <button onClick={reset} className="px-5 py-3 border border-zinc-300 rounded-xl text-zinc-700 font-medium">
+            <div className="flex gap-sm">
+              <button
+                onClick={reset}
+                className="h-12 px-lg rounded-full bg-surface hairline-all text-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+              >
                 Retake
               </button>
-              <button onClick={submit} className="flex-1 px-5 py-3 bg-black text-white rounded-xl font-medium">
-                Submit report
+              <button
+                onClick={detectLocation}
+                disabled={locating}
+                className="flex-1 h-12 rounded-full bg-primary text-on-primary font-headline-md text-[15px] flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform"
+              >
+                {locating ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full animate-spin" />
+                    Detecting location…
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[20px]">my_location</span>
+                    Continue
+                  </>
+                )}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* CONFIRM LOCATION (item 3) */}
+        {phase === 'confirm' && loc && (
+          <div className="animate-fade-up">
+            <div className="bg-surface hairline-all rounded-xl p-lg">
+              <div className="flex items-center gap-2 text-primary mb-sm">
+                <span className="material-symbols-outlined text-[20px]">location_on</span>
+                <h2 className="font-headline-md text-[16px]">Confirm the location</h2>
+              </div>
+              <p className="font-body-md text-[13px] text-on-surface-variant mb-md">
+                {loc.gpsOk
+                  ? 'We detected this from your GPS. Correct it if the city or ward is wrong — it decides which department gets the notice.'
+                  : 'We couldn’t read your GPS, so we’ve guessed. Please set the correct city and ward below.'}
+              </p>
+
+              <p className="font-label-caps text-label-caps uppercase text-on-surface-variant">Detected address</p>
+              <p className="font-body-md text-[14px] text-primary mb-md">{loc.address}</p>
+
+              <label className="font-label-caps text-label-caps uppercase text-on-surface-variant">City</label>
+              <select
+                value={loc.city}
+                onChange={(e) => setLoc({ ...loc, city: e.target.value as SupportedCity })}
+                className="w-full h-12 px-md rounded-xl bg-surface-container-lowest hairline-all text-primary font-body-md mb-md mt-1 focus:outline-none focus:border-primary transition-colors"
+              >
+                {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+
+              <label className="font-label-caps text-label-caps uppercase text-on-surface-variant">Ward / Area</label>
+              <input
+                value={loc.ward}
+                onChange={(e) => setLoc({ ...loc, ward: e.target.value })}
+                placeholder="e.g. Anna Nagar"
+                className="w-full h-12 px-md rounded-xl bg-surface-container-lowest hairline-all text-primary font-body-md mb-lg mt-1 focus:outline-none focus:border-primary transition-colors"
+              />
+
+              <div className="flex gap-sm">
+                <button
+                  onClick={() => setPhase('preview')}
+                  className="h-12 px-lg rounded-full bg-surface hairline-all text-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={submit}
+                  className="flex-1 h-12 rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+                >
+                  Looks right — file report
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {/* WORKING */}
         {phase === 'working' && (
-          <div className="text-center py-20">
-            <div className="w-12 h-12 border-4 border-zinc-200 border-t-black rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="font-medium text-black">{statusMsg}</p>
-            <p className="text-sm text-zinc-500 mt-1">Running the 5-tool civic agent...</p>
+          <div className="py-md animate-fade-in">
+            <div className="bg-surface hairline-all rounded-xl p-lg">
+              <p className="font-headline-md text-[16px] text-primary">Filing your report</p>
+              <p className="font-body-md text-[13px] text-on-surface-variant mb-lg">
+                Our 5-tool civic agent is on it — this usually takes ~15 seconds.
+              </p>
+              <div className="flex flex-col gap-md">
+                {STAGES.map((s, i) => {
+                  const done = i < step;
+                  const active = i === step;
+                  return (
+                    <div
+                      key={s.label}
+                      className={`flex items-center gap-md transition-opacity duration-300 ${i > step ? 'opacity-40' : 'opacity-100'}`}
+                    >
+                      <div
+                        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+                          done ? 'bg-primary text-on-primary'
+                          : active ? 'bg-primary/10 text-primary'
+                          : 'bg-surface-variant text-on-surface-variant'
+                        }`}
+                      >
+                        {done ? (
+                          <span className="material-symbols-outlined text-[18px]">check</span>
+                        ) : active ? (
+                          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <span className="font-stats-tabular text-[12px]">{i + 1}</span>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`font-headline-md text-[14px] ${done || active ? 'text-primary' : 'text-on-surface-variant'}`}>
+                          {s.label}
+                        </p>
+                        {active && (
+                          <p className="font-body-md text-[12px] text-on-surface-variant">{s.sub}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
         {/* ERROR */}
         {phase === 'error' && (
-          <div className="text-center py-16">
-            <span className="material-symbols-outlined text-[48px] text-red-500">error</span>
-            <p className="text-zinc-800 mt-3 mb-5">{error}</p>
-            <button onClick={() => setPhase('preview')} className="px-5 py-3 bg-black text-white rounded-xl font-medium">
+          <div className="text-center py-16 animate-fade-up">
+            <span className="material-symbols-outlined text-[48px] text-error">error</span>
+            <p className="font-body-md text-on-background mt-sm mb-lg max-w-[320px] mx-auto">{error}</p>
+            <button
+              onClick={() => setPhase('confirm')}
+              className="h-12 px-lg rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+            >
               Try again
             </button>
           </div>
         )}
 
-        {/* DONE */}
+        {/* DONE — sealed-notice confirmation */}
         {phase === 'done' && result && (
-          <div className="text-center">
-            <span className="material-symbols-outlined text-[56px] text-green-500">check_circle</span>
-            <h2 className="text-2xl font-semibold text-black mt-2">Report filed</h2>
+          <div className="text-center pt-md">
+            {/* Animated seal */}
+            <div className="animate-stamp relative w-28 h-28 mx-auto mb-lg flex items-center justify-center text-primary">
+              <svg className="absolute inset-0 w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 100 100">
+                <circle className="opacity-30" cx="50" cy="50" r="48" strokeWidth="2" strokeDasharray="8 4" />
+                <circle cx="50" cy="50" r="40" strokeWidth="1.5" />
+                <path d="M30 50 L45 65 L70 35" strokeLinecap="square" strokeLinejoin="miter" strokeWidth="4" />
+              </svg>
+            </div>
 
-            <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 my-6 text-left">
-              <p className="text-xs uppercase tracking-wide text-zinc-400">Tracking Code</p>
-              <p className="text-2xl font-bold text-black tracking-wider mb-4">{result.trackingCode}</p>
+            <h2 className="animate-fade-up font-headline-lg-mobile text-headline-lg-mobile text-primary tracking-tighter mb-xs">
+              Report Filed
+            </h2>
+            <p className="animate-fade-up delay-100 font-body-md text-on-surface-variant max-w-[320px] mx-auto mb-lg">
+              Your report has been classified, routed, and the formal notice is drafted. Send it to the department below.
+            </p>
 
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Issue</span>
-                  <span className="text-black font-medium">{CATEGORY_LABELS[result.analysis.category]}</span>
+            {/* Document preview card */}
+            <div className="animate-fade-up delay-200 bg-surface hairline-all rounded-xl overflow-hidden text-left shadow-[0_4px_24px_rgba(0,0,0,0.02)] relative">
+              <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-primary opacity-20" />
+              <div className="p-md hairline-b flex items-center justify-between bg-surface-container-lowest">
+                <div className="flex items-center gap-sm text-primary">
+                  <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>description</span>
+                  <span className="font-label-caps text-label-caps tracking-widest text-on-surface-variant">Official Notice</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Severity</span>
-                  <span className="font-semibold" style={{ color: SEVERITY_COLORS[getSeverityLevel(result.analysis.severity)] }}>
+                <span className="font-stats-tabular text-[11px] text-on-surface-variant">{result.trackingCode}</span>
+              </div>
+
+              <div className="p-md flex flex-col gap-md">
+                <Row label="Issue">
+                  {CATEGORY_LABELS[result.analysis.category]}
+                  {result.analysis.rpwdViolation && (
+                    <span className="ml-2 font-label-caps text-[10px] bg-error-container text-on-error-container px-2 py-0.5 rounded-full uppercase">
+                      RPWD
+                    </span>
+                  )}
+                </Row>
+                <Row label="Severity">
+                  <span className="font-stats-tabular font-semibold" style={{ color: SEVERITY_COLORS[getSeverityLevel(result.analysis.severity)] }}>
                     {result.analysis.severity}/10
                   </span>
+                </Row>
+                <Row label="Priority">
+                  <Pill color={PRIORITY_COLORS[getPriority(result.analysis.severity)]}>
+                    {getPriority(result.analysis.severity)}
+                  </Pill>
+                </Row>
+                <Row label="Status">
+                  <Pill color={(noticeSent ? STATUS_META.in_progress : STATUS_META.open).color}>
+                    {(noticeSent ? STATUS_META.in_progress : STATUS_META.open).label}
+                  </Pill>
+                </Row>
+                <Row label="Age">
+                  <span className="text-on-surface-variant">{formatIssueDuration(new Date().toISOString())}</span>
+                </Row>
+              </div>
+
+              {/* Transparent routing (item 4) */}
+              <div className="px-md pb-md">
+                <div className="bg-surface-container-lowest hairline-all rounded-lg p-md">
+                  <p className="font-body-md text-[13px] text-primary leading-relaxed">
+                    This issue falls under{' '}
+                    <strong>Ward {result.route.ward}</strong> →{' '}
+                    <strong>{CITY_CORPORATION[result.route.city]}</strong> →{' '}
+                    <strong>{result.route.department.name}</strong>.
+                  </p>
+                  <p className="font-body-md text-[12px] text-on-surface-variant mt-2 break-words">
+                    <strong className="text-primary">To:</strong>{' '}
+                    <span className="font-stats-tabular">{result.chain.to.intendedEmail || result.chain.to.role}</span>
+                    {result.chain.cc.length > 0 && (
+                      <>
+                        {' · '}
+                        <strong className="text-primary">Cc:</strong> {result.chain.cc.map((c) => c.role).join(', ')}
+                      </>
+                    )}
+                  </p>
+                  {result.chain.mode === 'demo' && (
+                    <p className="font-body-md text-[11px] text-on-surface-variant mt-1 italic">
+                      [Demo: some official addresses route to a test inbox.]
+                    </p>
+                  )}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Routed to</span>
-                  <span className="text-black font-medium text-right">{result.route.department.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Location</span>
-                  <span className="text-black text-right">{result.route.ward}, {result.route.city}</span>
-                </div>
+              </div>
+
+              <div className="px-md py-sm bg-surface-container-lowest hairline-t flex items-center gap-2">
+                <span className="relative flex w-1.5 h-1.5">
+                  <span className="absolute inline-flex w-full h-full rounded-full bg-primary opacity-75 animate-ping" />
+                  <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-primary" />
+                </span>
+                <span className="font-stats-tabular text-[11px] text-primary">Verified &amp; Sealed</span>
               </div>
             </div>
 
-            <p className="text-green-700 bg-green-50 rounded-xl py-2 text-sm mb-6">
+            <p className="animate-fade-up delay-300 font-body-md text-[14px] text-on-surface-variant bg-surface-container rounded-full py-sm mt-md">
               🏆 You earned {result.pointsEarned} civic points
             </p>
 
-            <div className="flex gap-3">
-              <Link href={`/track?code=${result.trackingCode}`} className="flex-1 px-5 py-3 border border-zinc-300 rounded-xl text-zinc-700 font-medium">
+            {/* Drafted notice — full text, with copy (manual-send model) */}
+            <div className="animate-fade-up delay-300 mt-lg text-left">
+              <div className="flex items-center justify-between mb-sm">
+                <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Drafted notice</h3>
+                <button
+                  onClick={copyNotice}
+                  className="flex items-center gap-1.5 font-headline-md text-[12px] text-primary bg-surface hairline-all rounded-full px-md py-1.5 active:scale-[0.98] transition-transform"
+                >
+                  <span className="material-symbols-outlined text-[16px]">{copied ? 'check' : 'content_copy'}</span>
+                  {copied ? 'Copied' : 'Copy notice'}
+                </button>
+              </div>
+              <div className="bg-surface hairline-all rounded-xl p-md max-h-72 overflow-y-auto">
+                <p className="font-stats-tabular text-[11px] text-on-surface-variant mb-sm">Subject: {result.dispatch.subject}</p>
+                <p className="font-body-md text-[12px] text-primary whitespace-pre-wrap leading-relaxed">{result.dispatch.emailNotice}</p>
+              </div>
+            </div>
+
+            {/* Primary action — citizen sends the notice from their own Gmail */}
+            <button
+              onClick={openInGmail}
+              className="animate-fade-up delay-300 w-full h-12 mt-md flex items-center justify-center gap-2 rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+            >
+              <span className="material-symbols-outlined text-[20px]">mail</span>
+              {noticeSent ? 'Reopen in Gmail' : 'Open in Gmail to Send'}
+            </button>
+            <p className="mt-2 font-body-md text-[12px] text-on-surface-variant text-center">
+              <strong className="text-primary">1.</strong> Attach the saved photo &nbsp;·&nbsp; <strong className="text-primary">2.</strong> Tap Send in Gmail
+            </p>
+            <a
+              href={mailtoLink()}
+              className="block mt-1 font-body-md text-[12px] text-on-surface-variant underline text-center"
+            >
+              or open in your default email app
+            </a>
+
+            <div className="animate-fade-up delay-400 flex gap-sm mt-lg">
+              <Link
+                href={`/track?code=${result.trackingCode}`}
+                prefetch
+                className="flex-1 h-12 flex items-center justify-center rounded-full bg-surface hairline-all text-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+              >
                 Track it
               </Link>
-              <button onClick={reset} className="flex-1 px-5 py-3 bg-black text-white rounded-xl font-medium">
+              <button
+                onClick={reset}
+                className="flex-1 h-12 rounded-full bg-surface hairline-all text-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+              >
                 Report another
               </button>
             </div>
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function Pill({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <span
+      className="font-label-caps text-[10px] uppercase px-2 py-0.5 rounded-full"
+      style={{ backgroundColor: `${color}1a`, color }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between items-center gap-4">
+      <span className="font-body-md text-[13px] text-on-surface-variant shrink-0">{label}</span>
+      <span className="font-body-md text-[13px] text-primary text-right">{children}</span>
     </div>
   );
 }

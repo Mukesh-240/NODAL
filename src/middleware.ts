@@ -7,7 +7,12 @@ const ALLOWED_ORIGINS = [
 
 export function middleware(req: NextRequest) {
   const origin = req.headers.get('origin') ?? '';
-  const isAllowed = ALLOWED_ORIGINS.includes(origin);
+  // Same-origin requests (Origin matches the host the app is served from) are
+  // always safe — this covers localhost, the LAN IP used for phone testing, and
+  // the deployed Cloud Run URL without needing each one in the allowlist.
+  const host = req.headers.get('host') ?? '';
+  const sameOrigin = !!origin && (origin === `http://${host}` || origin === `https://${host}`);
+  const isAllowed = sameOrigin || ALLOWED_ORIGINS.includes(origin);
 
   // Handle preflight
   if (req.method === 'OPTIONS') {

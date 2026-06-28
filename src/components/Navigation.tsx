@@ -2,30 +2,43 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+// Stitch design system bottom nav. Active tab = filled-icon pill; the rest are
+// icon + label in the muted variant color.
+const TABS = [
+  { href: '/', label: 'Home', icon: 'home' },
+  { href: '/insights', label: 'Dashboard', icon: 'dashboard' },
+  { href: '/track', label: 'Track', icon: 'analytics' },
+  { href: '/leaderboard', label: 'Leaderboard', icon: 'leaderboard' },
+  { href: '/profile', label: 'Profile', icon: 'person' },
+];
+
 export function Navigation() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 w-full flex justify-around items-center px-6 pb-8 pt-4 bg-white/90 backdrop-blur-2xl border-t border-zinc-200 z-50">
-      <Link href="/" className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${pathname === '/' ? 'bg-black text-white' : 'text-zinc-500 hover:text-black'}`}>
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: pathname === '/' ? "'FILL' 1" : "'FILL' 0" }}>map</span>
-      </Link>
-
-      <Link href="/insights" className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${pathname === '/insights' ? 'bg-black text-white' : 'text-zinc-500 hover:text-black'}`}>
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: pathname === '/insights' ? "'FILL' 1" : "'FILL' 0" }}>analytics</span>
-      </Link>
-
-      <Link href="/impact" className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${pathname === '/impact' ? 'bg-black text-white' : 'text-zinc-500 hover:text-black'}`}>
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: pathname === '/impact' ? "'FILL' 1" : "'FILL' 0" }}>public</span>
-      </Link>
-
-      <Link href="/leaderboard" className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${pathname === '/leaderboard' ? 'bg-black text-white' : 'text-zinc-500 hover:text-black'}`}>
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: pathname === '/leaderboard' ? "'FILL' 1" : "'FILL' 0" }}>leaderboard</span>
-      </Link>
-
-      <Link href="/track" className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${pathname === '/track' ? 'bg-black text-white' : 'text-zinc-500 hover:text-black'}`}>
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: pathname === '/track' ? "'FILL' 1" : "'FILL' 0" }}>search</span>
-      </Link>
+    <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-gutter py-md bg-surface border-t border-outline-variant">
+      {TABS.map(({ href, label, icon }) => {
+        const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            className={
+              active
+                ? 'flex flex-col items-center justify-center bg-primary text-on-primary rounded-full px-4 py-1 active:scale-90 transition-all duration-200'
+                : 'flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-all duration-200'
+            }
+          >
+            <span
+              className="material-symbols-outlined"
+              style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
+            >
+              {icon}
+            </span>
+            <span className="font-label-caps text-[10px] mt-1">{label}</span>
+          </Link>
+        );
+      })}
     </nav>
   );
 }

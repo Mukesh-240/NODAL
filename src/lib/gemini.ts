@@ -49,7 +49,7 @@ export async function analyzeImage(
   mimeType: string
 ): Promise<AnalyzeImageOutput> {
   const model = genAI.getGenerativeModel({
-    model: 'gemini-1.5-pro',
+    model: 'gemini-2.5-flash',
     generationConfig: {
       responseMimeType: 'application/json',
       temperature: 0.1, // Low temperature for consistent structured output
@@ -87,18 +87,65 @@ export async function analyzeImage(
   }
 }
 
+// ── Guaranteed legal footer ───────────────────────────────────────────────────
+// Appended to EVERY notice body (AI or fallback) so the statutory citations can
+// never go missing — Gemini was dropping them. Category-aware duty line + the
+// literal "RPWD Act 2016" and "RTI Act 2005" names + the escalation ladder + the
+// tracking-ref footer + a deterministic closing (the AI is told not to add its own).
+const CATEGORY_DUTY: Record<IssueCategory, string> = {
+  broken_ramp_accessibility: 'This defect is an accessibility barrier on a pedestrian right-of-way.',
+  broken_footpath: 'This defect is an accessibility barrier on a pedestrian right-of-way.',
+  damaged_road: 'The Corporation bears a statutory duty to maintain safe public roads and to barricade and remediate hazards without delay; this defect is an imminent public-safety risk.',
+  dangerous_excavation: 'The Corporation bears a statutory duty to maintain safe public roads and to barricade and remediate hazards without delay; this defect is an imminent public-safety risk.',
+  waterlogging: 'The Corporation bears a statutory duty to maintain functional storm-water drainage and public sanitation; this defect endangers public health and safety.',
+  damaged_streetlight: 'The Corporation bears a statutory duty to maintain public street lighting essential to night-time safety; this defect endangers public safety.',
+  waste_dumping: 'The Corporation bears a statutory duty to maintain public sanitation and solid-waste clearance; this defect endangers public health.',
+  other: 'The Corporation bears a statutory duty to maintain safe, functional public infrastructure; this defect endangers public welfare.',
+};
+
+export function buildLegalFooter(
+  analysis: AnalyzeImageOutput,
+  route: RouteResult,
+  trackingCode: string
+): string {
+  const days = route.department.avgResolutionDays;
+  const duty = CATEGORY_DUTY[analysis.category] || CATEGORY_DUTY.other;
+  return `
+
+LEGAL BASIS
+${duty} Under the Rights of Persons with Disabilities Act, 2016 (RPWD Act 2016), §40 & §45, the Corporation bears a statutory duty to maintain accessible, barrier-free and safe public infrastructure; this defect obstructs safe access for persons with disabilities, the elderly, and the general public.
+
+ESCALATION (in the event of no remedial action within ${days} working days)
+1. A formal information request under the Right to Information Act, 2005 (RTI Act 2005), §6, seeking the action-taken report on this complaint.
+2. A grievance under the RPWD Act 2016, §23, to the State Commissioner for Persons with Disabilities.
+3. Entry of this unresolved complaint into the public civic record via NODAL.
+
+NODAL Tracking Reference: ${trackingCode} — please cite in any follow-up correspondence.
+
+Yours faithfully,
+A concerned citizen
+(Filed via NODAL — civic infrastructure audit platform)`;
+}
+
 // ── Tool 3: draft_dispatch ────────────────────────────────────────────────────
 // Generates a formal legal complaint letter in Indian bureaucratic style.
-// Includes RPWD Act Section 40 citation when applicable.
+// The statutory citations + escalation + tracking ref are appended deterministically
+// (buildLegalFooter) so they ALWAYS appear regardless of the model's output.
 // Returns: email subject line + full formal letter body.
 
 export async function draftDispatch(input: DraftDispatchInput): Promise<DraftDispatchOutput> {
-  const { issueId, analysis, route, reportedAt } = input;
+  const { trackingCode, analysis, route, reportedAt } = input;
   const { department } = route;
 
   const severityLabel = analysis.severity >= 8 ? 'CRITICAL / LIFE-THREATENING'
     : analysis.severity >= 5 ? 'HIGH PRIORITY'
     : 'MEDIUM PRIORITY';
+
+  // Severity (item 5) drives the notice's urgency, not just a label. For High
+  // severity, demand immediate action and frame it as a public-safety risk.
+  const urgencyInstruction = analysis.severity >= 8
+    ? `This is a HIGH-PRIORITY, potentially life-threatening hazard. Open the emailNotice with an URGENT framing, explicitly state the immediate risk to public safety, and demand emergency remediation${analysis.rpwdViolation ? ' (including the citizen\'s rights under Section 40 of the RPWD Act 2016)' : ''} rather than routine processing.`
+    : '';
 
   const rpwdInstruction = analysis.rpwdViolation
     ? `Since this issue is flagged as a potential accessibility violation (rpwdViolation: true), you must generate a third document under 'rpwdComplaint' citing Section 40 of the Rights of Persons with Disabilities Act, 2016, and address it to the District Accessibility Nodal Officer of ${route.city}. If rpwdViolation is false, you must set 'rpwdComplaint' to an empty string "".`
@@ -106,7 +153,6 @@ export async function draftDispatch(input: DraftDispatchInput): Promise<DraftDis
 
   const prompt = `You are a senior civic affairs officer in India generating formal civic dispatches.
 Based on the following issue details, generate three formal plain text documents:
-- Reference ID: ${issueId}
 - Date: ${new Date(reportedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
 - Category: ${analysis.category}
 - Description: ${analysis.description}
@@ -116,9 +162,10 @@ Based on the following issue details, generate three formal plain text documents
 - Nodal Authority: ${route.city} Municipal Corporation
 
 ${rpwdInstruction}
+${urgencyInstruction}
 
 You must return ONLY a JSON object containing these exact fields:
-1. "emailNotice": A formal complaint letter in standard Indian bureaucratic style addressed to the department head. Cite the reference ID, date, location details, description, severity, and demand action within ${department.avgResolutionDays} working days. Include a yours faithfully closing.
+1. "emailNotice": A formal complaint letter in standard Indian bureaucratic style addressed to the department head. State the date, location details, description and severity, weave in the Corporation's statutory duty under the RPWD Act 2016 to maintain safe, accessible public infrastructure, and demand remedial action within ${department.avgResolutionDays} working days. END the letter immediately after the demand — do NOT add any sign-off, signature, reference number, or postscript (these are appended separately). Do NOT invent a reference number.
 2. "rtiApplication": A formal Right to Information (RTI) Act 2005 application under Section 6(1) addressed to the Public Information Officer (PIO) of the corporation. Formally ask for: (a) name and contact of the engineer in charge of this sector, (b) details of the contract/budget allocated for road/footpath repair in this ward for the current fiscal year, and (c) the expected start and completion timeline for repairing this specific hazard.
 3. "rpwdComplaint": If rpwdViolation is true, generate a formal complaint addressed to the District Accessibility Nodal Officer, citing Section 40 of the RPWD Act 2016, requesting remediation of the broken accessibility ramp/tactile path barrier within the statutory 30-day resolution deadline. If false, return "".
 
@@ -128,11 +175,11 @@ Rules:
 - Return ONLY the raw JSON object. Do not include markdown fences, preamble, or any extra text.`;
 
   const model = genAI.getGenerativeModel({
-    model: 'gemini-1.5-pro',
+    model: 'gemini-2.5-flash',
     generationConfig: {
       responseMimeType: 'application/json',
       temperature: 0.2,
-      maxOutputTokens: 1500, // Larger output to accommodate all 3 documents
+      maxOutputTokens: 4096, // Room for all 3 documents — 1500 truncated the JSON
     },
   });
 
@@ -143,11 +190,12 @@ Rules:
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
-    const subject = `[NODAL-${issueId}] ${severityLabel}: ${analysis.description} — ${route.ward}, ${route.city}`;
+    const subject = `[${trackingCode}] ${severityLabel}: ${analysis.description} — ${route.ward}, ${route.city}`;
 
     return {
       subject,
-      emailNotice: String(parsed.emailNotice || '').trim(),
+      // Append the guaranteed legal footer (acts + escalation + ref + closing).
+      emailNotice: String(parsed.emailNotice || '').trim() + buildLegalFooter(analysis, route, trackingCode),
       rtiApplication: String(parsed.rtiApplication || '').trim(),
       rpwdComplaint: String(parsed.rpwdComplaint || '').trim(),
     };

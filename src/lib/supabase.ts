@@ -5,7 +5,7 @@
 //   Supabase JS — MIT License — https://github.com/supabase/supabase-js
 
 import { createClient } from '@supabase/supabase-js';
-import { Issue, CivicUser, DashboardStats, IssueCategory, SupportedCity, getBadge } from '@/types';
+import { Issue, CivicUser, DashboardStats, IssueCategory, IssueStatus, SupportedCity, getBadge } from '@/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -47,16 +47,38 @@ export async function getIssues(filters?: { city?: SupportedCity; status?: strin
   return (data as Issue[]) || [];
 }
 
+// Update an issue's lifecycle status by tracking code or UUID. Writes go through
+// the service-role client (RLS allows only service_role to UPDATE issues).
+// Sets resolved_at when moving to 'resolved'.
+export async function updateIssueStatus(idOrCode: string, status: IssueStatus): Promise<void> {
+  const safe = idOrCode.replace(/[^A-Za-z0-9-]/g, '');
+  if (!safe) throw new Error('Invalid issue identifier');
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(safe);
+  const column = isUuid ? 'id' : 'tracking_code';
+
+  const patch: { status: IssueStatus; resolved_at?: string } = { status };
+  if (status === 'resolved') patch.resolved_at = new Date().toISOString();
+
+  const { error } = await supabaseAdmin.from('issues').update(patch).eq(column, safe);
+  if (error) throw new Error(`Failed to update status: ${error.message}`);
+}
+
 export async function getIssueById(id: string): Promise<Issue | null> {
   // Strip anything that isn't part of a UUID or tracking code (NDL-CHN-12345)
-  // before interpolating into the PostgREST filter — prevents filter injection.
+  // before using it in the filter — prevents injection.
   const safeId = id.replace(/[^A-Za-z0-9-]/g, '');
   if (!safeId) return null;
+
+  // The `id` column is a UUID — querying it with a tracking code (not a UUID)
+  // makes Postgres error and the whole lookup fail. So pick the right column:
+  // query `id` only when the value looks like a UUID, otherwise tracking_code.
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(safeId);
+  const column = isUuid ? 'id' : 'tracking_code';
 
   const { data, error } = await supabase
     .from('issues')
     .select('*')
-    .or(`id.eq.${safeId},tracking_code.eq.${safeId}`)
+    .eq(column, safeId)
     .single();
 
   if (error) return null;
@@ -209,6 +231,84 @@ export async function upsertCivicUser(sessionId: string, city?: SupportedCity): 
     if (error) throw error;
     return data as CivicUser;
   }
+}
+
+// ── Hyper-local Leaderboard (issues-aggregation) ──────────────────────────────
+// civic_users has no ward, so rank from the issues table within scope, joined to
+// civic_users for display names. Verified civic contribution: reports filed +
+// notices dispatched + citizen-confirmed resolutions, with resolutions weighing
+// most (honest status model: in_progress = Notice Sent, resolved = Resolved).
+export type LeaderScope = 'ward' | 'city' | 'all';
+
+export interface ScopedLeader {
+  rank: number;
+  display_name: string;
+  reports: number;
+  dispatched: number;
+  resolved: number;
+  score: number;
+}
+
+const SCORE = { report: 10, dispatched: 15, resolved: 40 }; // resolutions weigh most
+
+export async function getScopedLeaderboard(opts: {
+  scope: LeaderScope;
+  city?: string;
+  ward?: string;
+}): Promise<ScopedLeader[]> {
+  let query = supabase
+    .from('issues')
+    .select('reporter_session, status')
+    .not('reporter_session', 'is', null);
+
+  if (opts.scope === 'ward' && opts.city && opts.ward) {
+    query = query.eq('city', opts.city).eq('ward', opts.ward);
+  } else if (opts.scope === 'city' && opts.city) {
+    query = query.eq('city', opts.city);
+  }
+
+  const { data, error } = await query.limit(2000);
+  if (error) throw new Error(`Leaderboard error: ${error.message}`);
+
+  // Aggregate per reporter session.
+  const agg = new Map<string, { reports: number; dispatched: number; resolved: number }>();
+  for (const row of (data || []) as { reporter_session: string | null; status: string }[]) {
+    const s = row.reporter_session;
+    if (!s) continue;
+    const a = agg.get(s) || { reports: 0, dispatched: 0, resolved: 0 };
+    a.reports += 1;
+    if (row.status === 'in_progress' || row.status === 'resolved') a.dispatched += 1;
+    if (row.status === 'resolved') a.resolved += 1;
+    agg.set(s, a);
+  }
+
+  const ids = [...agg.keys()];
+  if (ids.length === 0) return [];
+
+  // Display names (civic_users is service-role-only under RLS).
+  const names = new Map<string, string>();
+  const { data: users } = await supabaseAdmin
+    .from('civic_users')
+    .select('id, display_name')
+    .in('id', ids);
+  for (const u of (users || []) as { id: string; display_name: string | null }[]) {
+    names.set(u.id, u.display_name || 'Anonymous Citizen');
+  }
+
+  return ids
+    .map((id) => {
+      const a = agg.get(id)!;
+      return {
+        display_name: names.get(id) || 'Anonymous Citizen',
+        reports: a.reports,
+        dispatched: a.dispatched,
+        resolved: a.resolved,
+        score: a.reports * SCORE.report + a.dispatched * SCORE.dispatched + a.resolved * SCORE.resolved,
+      };
+    })
+    .sort((x, y) => y.score - x.score)
+    .slice(0, 10)
+    .map((s, i) => ({ rank: i + 1, ...s }));
 }
 
 export async function getLeaderboard(): Promise<CivicUser[]> {

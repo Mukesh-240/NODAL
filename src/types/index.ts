@@ -12,7 +12,39 @@ export type IssueCategory =
   | 'dangerous_excavation'
   | 'other';
 
+// DB enum is open|in_progress|resolved; the honest lifecycle relabels them:
+// open = Reported, in_progress = Notice Sent (citizen opened Gmail to send),
+// resolved = Resolved (citizen-confirmed). No migration — labels live in STATUS_META.
 export type IssueStatus = 'open' | 'in_progress' | 'resolved';
+
+export const STATUS_META: Record<IssueStatus, { label: string; color: string }> = {
+  open: { label: 'Reported', color: '#77777b' },        // gray
+  in_progress: { label: 'Notice Sent', color: '#1E88E5' }, // blue
+  resolved: { label: 'Resolved', color: '#10b981' },    // emerald
+};
+
+// Priority is derived from severity (already stored) — not a separate DB column.
+export type Priority = 'High' | 'Medium' | 'Low';
+
+export function getPriority(severity: number): Priority {
+  if (severity >= 8) return 'High';
+  if (severity >= 5) return 'Medium';
+  return 'Low';
+}
+
+export const PRIORITY_COLORS: Record<Priority, string> = {
+  High: '#E53935',
+  Medium: '#FB8C00',
+  Low: '#43A047',
+};
+
+// Middle tier shown in the transparent routing display (Ward → Corporation → Dept).
+export const CITY_CORPORATION: Record<SupportedCity, string> = {
+  Chennai: 'Greater Chennai Corporation',
+  Bengaluru: 'BBMP',
+  Mumbai: 'BMC (MCGM)',
+  Delhi: 'MCD',
+};
 
 export type CivicBadge =
   | 'Civic Newcomer'
@@ -35,6 +67,24 @@ export interface RouteResult {
   city: SupportedCity;
   ward: string;
   department: DepartmentInfo;
+}
+
+// ── Severity-Based Escalation Chain ───────────────────────────────────────────
+// One recipient in the accountability chain. `intendedEmail` is the real role
+// address if genuinely known (else null = display-only). `sendTo` is where the
+// mail actually goes — the test inbox in demo mode, the intended address in live
+// mode, or null when there's no verified address to send to.
+export interface DispatchRecipient {
+  role: string;
+  intendedEmail: string | null;
+  sendTo: string | null;
+}
+
+export interface DispatchChain {
+  to: DispatchRecipient;
+  cc: DispatchRecipient[];
+  routingLabel: string;       // "Ward <ward> → <corpShort> → <dept>"
+  mode: 'demo' | 'live';
 }
 
 // ── Tool Inputs & Outputs (5-Tool Agent Loop) ─────────────────────────────────
@@ -66,6 +116,7 @@ export interface RouteIssueInput {
 // Tool 3: draft_dispatch
 export interface DraftDispatchInput {
   issueId: string;
+  trackingCode: string;       // human-readable NODAL Tracking Ref, cited in the docs
   analysis: AnalyzeImageOutput;
   route: RouteResult;
   reportedAt: string;
@@ -122,8 +173,9 @@ export interface Issue {
   department: string;
   dept_email: string;
   dispatch_text: string;
-  rti_text: string;
-  rpwd_grievance_text: string;
+  // Not persisted (live DB lacks these columns); generated + emailed only.
+  rti_text?: string;
+  rpwd_grievance_text?: string;
   status: IssueStatus;
   reporter_session: string;
   created_at: string;
@@ -147,9 +199,11 @@ export interface AnalyzeRequest {
   mimeType: string;
   gpsLat: number;
   gpsLng: number;
-  citizenEmail: string;
-  gmailAccessToken: string;
+  citizenEmail?: string;
   reporterSession: string;
+  // Citizen-confirmed routing (item 3): user can correct the detected city/ward.
+  cityOverride?: SupportedCity;
+  wardOverride?: string;
 }
 
 export interface AnalyzeResponse {
@@ -159,6 +213,7 @@ export interface AnalyzeResponse {
   analysis: AnalyzeImageOutput;
   route: RouteResult;
   dispatch: DraftDispatchOutput;
+  chain: DispatchChain;
   pointsEarned: number;
   error?: string;
 }
@@ -213,6 +268,19 @@ export function getBadge(points: number): CivicBadge {
   if (points >= 500)  return 'Civic Sentinel';
   if (points >= 100)  return 'Neighborhood Watch';
   return 'Civic Newcomer';
+}
+
+// Honest "days open" label from real timestamps (no fake data). Resolved issues
+// show time-to-resolution; open issues show elapsed days since reported.
+export function formatIssueDuration(createdAt: string, resolvedAt?: string | null): string {
+  const start = new Date(createdAt).getTime();
+  const end = resolvedAt ? new Date(resolvedAt).getTime() : Date.now();
+  const days = Math.max(0, Math.floor((end - start) / (1000 * 60 * 60 * 24)));
+  if (resolvedAt) {
+    const n = Math.max(1, days); // a same-day resolution still took a day to confirm
+    return `Resolved in ${n} day${n === 1 ? '' : 's'}`;
+  }
+  return `Open ${days} day${days === 1 ? '' : 's'}`;
 }
 
 export const CATEGORY_LABELS: Record<IssueCategory, string> = {
