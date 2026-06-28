@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill            # fewer nitpicks; focus on real issues
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "src/**/*.{ts,tsx}"
+      instructions: >
+        Next.js 16 App Router + TypeScript. Flag: any secret/API key committed to the
+        repo; missing input validation at API route boundaries (zod); server-only code
+        (process.env, supabaseAdmin / service-role) imported into client components;
+        and honesty regressions where UI/legal copy claims something the code doesn't do.
+    - path: "src/app/api/**"
+      instructions: >
+        These are server routes. Check auth/ownership checks, that errors don't leak
+        internals, and that no government email is ever sent in demo mode.
+chat:
+  auto_reply: true
