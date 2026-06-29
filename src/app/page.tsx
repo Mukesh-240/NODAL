@@ -138,7 +138,7 @@ const STAGES = [
 const STAGE_MS = 2600; // time each stage is shown before advancing
 
 function ReportContent() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, signIn } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [previewUrl, setPreviewUrl] = useState('');
@@ -348,7 +348,7 @@ function ReportContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-28">
+    <div className="min-h-screen bg-white pb-28">
       <header className="px-gutter pt-xl pb-lg max-w-[560px] mx-auto">
         <div className="flex items-start justify-between gap-md">
           <h1 className="font-display-lg text-[40px] font-bold tracking-tighter text-primary">NODAL</h1>
@@ -361,7 +361,18 @@ function ReportContent() {
               <button onClick={signOut} className="font-body-md text-[12px] text-on-surface-variant underline">Sign out</button>
             </div>
           ) : (
-            <div className="shrink-0"><GoogleButton /></div>
+            <button
+              onClick={signIn}
+              className="shrink-0 flex items-center gap-2 py-2 px-3 rounded-full border border-gray-200 text-[13px] font-semibold text-gray-950 hover:bg-gray-50 transition-colors"
+            >
+              <svg width="15" height="15" viewBox="0 0 18 18" aria-hidden="true">
+                <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" />
+                <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" />
+                <path fill="#FBBC05" d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z" />
+                <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" />
+              </svg>
+              Sign in
+            </button>
           )}
         </div>
         <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
@@ -385,24 +396,30 @@ function ReportContent() {
             {/* Primary CTA */}
             <button
               onClick={startReport}
-              className="w-full rounded-xl bg-primary text-on-primary px-lg py-xl flex flex-col items-center justify-center gap-sm active:scale-[0.99] transition-transform"
+              className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-10 flex flex-col items-center gap-3 hover:border-gray-950 hover:bg-gray-50 transition-all"
             >
-              <span className="material-symbols-outlined text-[56px]">photo_camera</span>
-              <span className="font-headline-md text-[18px]">Report an issue</span>
-              <span className="font-body-md text-[13px] opacity-80">Take or upload a photo</span>
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[24px] text-gray-950">photo_camera</span>
+              </div>
+              <div className="text-center">
+                <p className="font-semibold text-gray-950 text-[15px]">Report an issue</p>
+                <p className="text-sm text-gray-400 mt-0.5">Take or upload a photo</p>
+              </div>
             </button>
 
             {/* Sign-in prompt — shown when a signed-out citizen taps Report */}
             {showSignIn && !user && (
-              <div className="animate-fade-up mt-md bg-surface hairline-all rounded-xl p-lg text-center">
-                <span className="material-symbols-outlined text-[28px] text-primary">lock</span>
-                <p className="font-body-md text-[14px] text-primary mt-sm mb-md">
-                  Sign in with Google to file a report. Your name and email are used to prepare the formal notice.
+              <div className="animate-fade-up mt-4 bg-white border border-gray-100 rounded-2xl p-6">
+                <p className="text-base font-bold text-gray-950 mb-1">
+                  Sign in to file a report
                 </p>
-                <div className="flex justify-center"><GoogleButton /></div>
+                <p className="text-sm text-gray-500 mb-4 leading-relaxed">
+                  Your name and email are used to prepare the formal notice. NODAL never posts on your behalf.
+                </p>
+                <GoogleButton />
                 <button
                   onClick={() => setShowSignIn(false)}
-                  className="block mx-auto mt-md font-body-md text-[12px] text-on-surface-variant underline"
+                  className="block mx-auto mt-3 text-xs text-gray-400 hover:text-gray-950 transition-colors underline"
                 >
                   Not now
                 </button>
@@ -410,36 +427,31 @@ function ReportContent() {
             )}
 
             {/* How it works */}
-            <section className="mt-xl">
-              <h2 className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-md">How it works</h2>
-              <div className="flex flex-col gap-sm">
+            <div className="mt-8">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">How it works</p>
+              <div className="space-y-4">
                 {[
-                  { icon: 'photo_camera', title: 'Snap a photo', body: 'Capture the issue — pothole, broken footpath, flooding, a blocked ramp.' },
-                  { icon: 'neurology', title: 'AI classifies & routes', body: 'Gemini grades severity and finds the exact department responsible.' },
-                  { icon: 'mail', title: 'You send the notice', body: 'A formal complaint + RTI is drafted for you to send from your own Gmail, with a tracking code.' },
-                ].map((s, i) => (
-                  <div key={s.title} className="flex items-start gap-md bg-surface hairline-all rounded-xl p-md">
-                    <div className="shrink-0 w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center font-stats-tabular text-[14px]">
-                      {i + 1}
-                    </div>
+                  { n: '01', title: 'Snap a photo', desc: 'Capture the issue — pothole, broken footpath, flooding, a blocked ramp.' },
+                  { n: '02', title: 'AI classifies & routes', desc: 'Gemini scores severity and finds the exact department responsible.' },
+                  { n: '03', title: 'You send the notice', desc: 'A formal notice citing RPWD Act + RTI Act is drafted. You review and send.' },
+                ].map((step) => (
+                  <div key={step.n} className="flex gap-4">
+                    <span className="text-xs font-bold text-gray-300 w-6 flex-shrink-0 mt-0.5">{step.n}</span>
                     <div>
-                      <p className="font-headline-md text-[15px] text-primary flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[18px]">{s.icon}</span>
-                        {s.title}
-                      </p>
-                      <p className="font-body-md text-[13px] text-on-surface-variant mt-0.5">{s.body}</p>
+                      <p className="text-sm font-semibold text-gray-950">{step.title}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{step.desc}</p>
                     </div>
                   </div>
                 ))}
               </div>
-            </section>
+            </div>
 
             {/* What NODAL handles */}
-            <section className="mt-xl">
-              <h2 className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-md">What NODAL handles</h2>
-              <div className="flex flex-wrap gap-sm">
+            <section className="mt-8">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">What NODAL handles</p>
+              <div className="flex flex-wrap gap-2">
                 {['Damaged roads', 'Broken footpaths', 'Waterlogging', 'Streetlights', 'Waste dumping', 'Accessibility / RPWD', 'Dangerous excavation'].map((c) => (
-                  <span key={c} className="font-stats-tabular text-[12px] text-primary bg-surface hairline-all rounded-full px-md py-sm">
+                  <span key={c} className="bg-gray-100 text-gray-700 rounded-full px-3 py-1.5 text-sm font-medium">
                     {c}
                   </span>
                 ))}
@@ -447,13 +459,13 @@ function ReportContent() {
             </section>
 
             {/* Coverage */}
-            <section className="mt-xl">
-              <h2 className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-md">Where we operate</h2>
-              <div className="grid grid-cols-2 gap-sm">
+            <section className="mt-8">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Where we operate</p>
+              <div className="grid grid-cols-2 gap-2">
                 {CITIES.map((city) => (
-                  <div key={city} className="flex items-center gap-2 bg-surface hairline-all rounded-xl p-md">
-                    <span className="material-symbols-outlined text-[18px] text-on-surface-variant">location_city</span>
-                    <span className="font-headline-md text-[14px] text-primary">{city}</span>
+                  <div key={city} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                    <p className="text-sm font-semibold text-gray-950">{city}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{CITY_CORPORATION[city]}</p>
                   </div>
                 ))}
               </div>
