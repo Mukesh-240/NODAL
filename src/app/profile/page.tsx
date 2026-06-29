@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { getSession } from '@/lib/session';
+import { useAuth } from '@/lib/auth';
 import { CATEGORY_LABELS, STATUS_META, IssueCategory, IssueStatus, formatIssueDuration } from '@/types';
 
 interface ProfileReport {
@@ -29,6 +31,8 @@ interface ProfileData {
 }
 
 function ProfileContent() {
+  const { user, signOut } = useAuth();
+  const router = useRouter();
   const [data, setData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -157,6 +161,24 @@ function ProfileContent() {
                 </div>
               )}
             </section>
+
+            {/* Account actions */}
+            <div className="hairline-t mt-xl pt-lg">
+              {user && (
+                <button
+                  onClick={() => { signOut(); router.push('/'); }}
+                  className="w-full h-12 rounded-full bg-surface hairline-all text-primary font-headline-md text-[14px] active:scale-[0.98] transition-transform"
+                >
+                  Sign out
+                </button>
+              )}
+              <Link
+                href="/data-deletion"
+                className="w-full flex items-center justify-center mt-sm py-3 font-body-md text-[13px] text-on-surface-variant hover:text-primary transition-colors"
+              >
+                Delete my data
+              </Link>
+            </div>
           </>
         )}
       </main>
