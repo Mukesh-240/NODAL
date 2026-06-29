@@ -38,6 +38,7 @@ const AnalyzeRequestSchema = z.object({
     .email('Invalid email')
     .max(254, 'Email too long')
     .optional(),
+  citizenName: z.string().max(120, 'Name too long').optional(),
   reporterSession: z.string().uuid('Invalid session ID'),
   // Citizen-confirmed routing (item 3) — optional overrides for city/ward.
   cityOverride: z.enum(['Chennai', 'Bengaluru', 'Mumbai', 'Delhi']).optional(),
@@ -128,7 +129,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { imageBase64, mimeType, gpsLat, gpsLng, citizenEmail, reporterSession, cityOverride, wardOverride } = body;
+  const { imageBase64, mimeType, gpsLat, gpsLng, citizenEmail, citizenName, reporterSession, cityOverride, wardOverride } = body;
 
   // ── GPS Validation ──────────────────────────────────────────────────────────
   if (!isInIndia(gpsLat, gpsLng)) {
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
   try {
     logTool('analyze_image', 'start');
     const t1 = Date.now();
-    analysis = await analyzeImage(imageBase64, mimeType);
+    analysis = await analyzeImage(imageBase64, mimeType, wardOverride, cityOverride);
     logTool('analyze_image', 'done', Date.now() - t1);
 
     // Confidence gate: reject garbage images
@@ -327,11 +328,10 @@ export async function POST(request: NextRequest) {
       // issues table lacks those columns. The full text is still emailed.
       status: 'open',
       reporter_session: reporterSession,
-      // Citizen contact for the Day 7/15/30 escalation reminders. Only the email
-      // is collected (optional field on the report form); there is no server-side
-      // OAuth, so citizen_name stays null until name capture is added.
+      // Citizen contact for the Day 7/15/30 escalation reminders + the notice
+      // signature — name + email now come from the client-side Google Sign-In.
       citizen_email: citizenEmail ?? null,
-      citizen_name: null,
+      citizen_name: citizenName ?? null,
       // Agent transparency — what the agent decided + why (CHANGE 6).
       agent_reasoning: agentReasoning,
       pattern_detected: patternResult.patternDetected,

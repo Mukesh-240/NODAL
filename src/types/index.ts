@@ -213,6 +213,7 @@ export interface AnalyzeRequest {
   gpsLat: number;
   gpsLng: number;
   citizenEmail?: string;
+  citizenName?: string;
   reporterSession: string;
   // Citizen-confirmed routing (item 3): user can correct the detected city/ward.
   cityOverride?: SupportedCity;

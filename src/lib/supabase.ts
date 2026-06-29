@@ -375,6 +375,68 @@ export async function getScopedLeaderboard(opts: {
     .map((s, i) => ({ rank: i + 1, ...s }));
 }
 
+// ── Per-citizen profile (real data, keyed to the anonymous session) ───────────
+// Aggregates the session's own issues + civic_users row. Brand-new sessions get
+// zeros and an empty history — no seed/demo data. Score uses the same weights as
+// the leaderboard so the two stay consistent.
+export interface ProfileReport {
+  tracking_code: string;
+  category: IssueCategory;
+  status: IssueStatus;
+  city: string;
+  ward: string;
+  created_at: string;
+  severity: number;
+}
+
+export interface ProfileData {
+  displayName: string | null;
+  email: string | null;
+  city: string | null;
+  badge: string;
+  reports: number;
+  dispatched: number;
+  resolved: number;
+  score: number;
+  recent: ProfileReport[];
+}
+
+export async function getProfile(session: string): Promise<ProfileData> {
+  // civic_users row may not exist yet for a brand-new session — maybeSingle()
+  // returns null instead of erroring.
+  const { data: user } = await supabaseAdmin
+    .from('civic_users')
+    .select('display_name, city, badge_level')
+    .eq('id', session)
+    .maybeSingle();
+
+  const { data, error } = await supabaseAdmin
+    .from('issues')
+    .select('tracking_code, category, status, city, ward, created_at, severity, citizen_email')
+    .eq('reporter_session', session)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw new Error(`Profile error: ${error.message}`);
+
+  const rows = (data || []) as (ProfileReport & { citizen_email: string | null })[];
+  const reports = rows.length;
+  const dispatched = rows.filter((i) => i.status === 'in_progress' || i.status === 'resolved').length;
+  const resolved = rows.filter((i) => i.status === 'resolved').length;
+  const score = reports * SCORE.report + dispatched * SCORE.dispatched + resolved * SCORE.resolved;
+
+  return {
+    displayName: user?.display_name ?? null,
+    email: rows.find((i) => i.citizen_email)?.citizen_email ?? null,
+    city: user?.city ?? rows[0]?.city ?? null,
+    badge: user?.badge_level ?? 'Civic Newcomer',
+    reports,
+    dispatched,
+    resolved,
+    score,
+    recent: rows.slice(0, 10).map(({ citizen_email: _omit, ...r }) => r),
+  };
+}
+
 export async function getLeaderboard(): Promise<CivicUser[]> {
   // civic_users RLS is service-role-only, so this must use the admin client
   // (only ever called server-side from /api/leaderboard).

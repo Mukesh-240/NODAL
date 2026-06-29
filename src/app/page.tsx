@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import {
   CATEGORY_LABELS,
@@ -17,6 +17,7 @@ import {
 import { getSession } from '@/lib/session';
 import { detectCityFromGPS, cityCenter } from '@/lib/routingMatrix';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { useAuth, GoogleButton } from '@/lib/auth';
 
 const CITIES: SupportedCity[] = ['Chennai', 'Bengaluru', 'Mumbai', 'Delhi'];
 
@@ -137,11 +138,12 @@ const STAGES = [
 const STAGE_MS = 2600; // time each stage is shown before advancing
 
 function ReportContent() {
+  const { user, signOut } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [previewUrl, setPreviewUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [email, setEmail] = useState('');
+  const [showSignIn, setShowSignIn] = useState(false);
   const [step, setStep] = useState(0);
   const [error, setError] = useState('');
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
@@ -150,6 +152,21 @@ function ReportContent() {
   const [noticeSent, setNoticeSent] = useState(false);
   const [copied, setCopied] = useState(false);
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Filing requires the citizen's real identity (their name goes on a formal legal
+  // notice). Signed out → show the sign-in prompt; once signed in, continue straight
+  // into the camera so the sign-in feels like one uninterrupted step.
+  function startReport() {
+    if (!user) { setShowSignIn(true); return; }
+    fileRef.current?.click();
+  }
+
+  useEffect(() => {
+    if (user && showSignIn) {
+      setShowSignIn(false);
+      fileRef.current?.click();
+    }
+  }, [user, showSignIn]);
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -210,7 +227,8 @@ function ReportContent() {
           mimeType,
           gpsLat: lat,
           gpsLng: lng,
-          citizenEmail: email.trim() || undefined,
+          citizenEmail: user?.email || undefined,
+          citizenName: user?.name || undefined,
           reporterSession: getSession(),
           cityOverride: loc.city,
           wardOverride: loc.ward,
@@ -332,7 +350,20 @@ function ReportContent() {
   return (
     <div className="min-h-screen bg-background pb-28">
       <header className="px-gutter pt-xl pb-lg max-w-[560px] mx-auto">
-        <h1 className="font-display-lg text-[40px] font-bold tracking-tighter text-primary">NODAL</h1>
+        <div className="flex items-start justify-between gap-md">
+          <h1 className="font-display-lg text-[40px] font-bold tracking-tighter text-primary">NODAL</h1>
+          {user ? (
+            <div className="flex items-center gap-2 shrink-0">
+              {user.picture
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={user.picture} alt="" className="w-7 h-7 rounded-full" referrerPolicy="no-referrer" />
+                : <span className="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center text-[12px] font-bold">{user.name.charAt(0).toUpperCase()}</span>}
+              <button onClick={signOut} className="font-body-md text-[12px] text-on-surface-variant underline">Sign out</button>
+            </div>
+          ) : (
+            <div className="shrink-0"><GoogleButton /></div>
+          )}
+        </div>
         <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
           Snap a civic issue. We classify it, route it to the right department, and prepare the formal notice.
         </p>
@@ -353,13 +384,30 @@ function ReportContent() {
           <div className="animate-fade-up">
             {/* Primary CTA */}
             <button
-              onClick={() => fileRef.current?.click()}
+              onClick={startReport}
               className="w-full rounded-xl bg-primary text-on-primary px-lg py-xl flex flex-col items-center justify-center gap-sm active:scale-[0.99] transition-transform"
             >
               <span className="material-symbols-outlined text-[56px]">photo_camera</span>
               <span className="font-headline-md text-[18px]">Report an issue</span>
               <span className="font-body-md text-[13px] opacity-80">Take or upload a photo</span>
             </button>
+
+            {/* Sign-in prompt — shown when a signed-out citizen taps Report */}
+            {showSignIn && !user && (
+              <div className="animate-fade-up mt-md bg-surface hairline-all rounded-xl p-lg text-center">
+                <span className="material-symbols-outlined text-[28px] text-primary">lock</span>
+                <p className="font-body-md text-[14px] text-primary mt-sm mb-md">
+                  Sign in with Google to file a report. Your name and email are used to prepare the formal notice.
+                </p>
+                <div className="flex justify-center"><GoogleButton /></div>
+                <button
+                  onClick={() => setShowSignIn(false)}
+                  className="block mx-auto mt-md font-body-md text-[12px] text-on-surface-variant underline"
+                >
+                  Not now
+                </button>
+              </div>
+            )}
 
             {/* How it works */}
             <section className="mt-xl">
@@ -418,13 +466,14 @@ function ReportContent() {
           <div className="animate-fade-up">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={previewUrl} alt="preview" className="w-full rounded-xl mb-md object-cover max-h-96 hairline-all" />
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Your email (optional — for the confirmation copy)"
-              className="w-full h-12 px-md rounded-full bg-surface hairline-all text-primary font-body-md placeholder:text-on-surface-variant mb-sm focus:outline-none focus:border-primary transition-colors"
-            />
+            {user && (
+              <div className="flex items-center gap-2 bg-surface hairline-all rounded-full px-md py-sm mb-sm">
+                <span className="material-symbols-outlined text-[18px] text-on-surface-variant">mail</span>
+                <span className="font-body-md text-[13px] text-on-surface-variant truncate">
+                  Filed as <strong className="text-primary">{user.name}</strong> · updates to {user.email}
+                </span>
+              </div>
+            )}
             <div className="flex gap-sm">
               <button
                 onClick={reset}
@@ -525,7 +574,7 @@ function ReportContent() {
             <div className="bg-surface hairline-all rounded-xl p-lg">
               <p className="font-headline-md text-[16px] text-primary">Filing your report</p>
               <p className="font-body-md text-[13px] text-on-surface-variant mb-lg">
-                Our 5-tool civic agent is on it — this usually takes ~15 seconds.
+                Our 6-tool civic agent is on it — this usually takes ~15 seconds.
               </p>
               <div className="flex flex-col gap-md">
                 {STAGES.map((s, i) => {

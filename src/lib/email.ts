@@ -7,7 +7,14 @@
 import { Resend } from 'resend';
 import { AnalyzeImageOutput, RouteResult, DraftDispatchOutput, DispatchChain } from '@/types';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy singleton — constructing Resend at module load throws when RESEND_API_KEY
+// is absent, which breaks `next build` (the key is a runtime-only secret, never
+// committed). Build it on first send instead, when the runtime env is present.
+let _resend: Resend | null = null;
+function resend(): Resend {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
+  return _resend;
+}
 const FROM = process.env.RESEND_FROM_EMAIL || 'nodal@civic.app';
 const BASE_URL = process.env.NODAL_BASE_URL || 'https://nodal.vercel.app';
 
@@ -21,7 +28,7 @@ export async function sendDispatchViaResend(params: {
   body: string;
   replyTo?: string;
 }) {
-  await resend.emails.send({
+  await resend().emails.send({
     from: FROM,
     to: params.to,
     cc: params.cc,
@@ -164,7 +171,7 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
 </body>
 </html>`;
 
-  await resend.emails.send({
+  await resend().emails.send({
     from: FROM,
     to,
     subject: `Your NODAL Report: ${analysis.description} in ${route.ward}, ${route.city} — Ref: ${trackingCode}`,
