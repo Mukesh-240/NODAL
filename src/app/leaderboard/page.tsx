@@ -13,17 +13,44 @@ interface Leader {
 }
 
 type Scope = 'ward' | 'city' | 'all';
+type Tab = Scope | 'health';
+
+interface WardHealth {
+  city: string;
+  ward: string;
+  total_issues: number;
+  resolved_count: number;
+  resolution_rate: number | null;
+  avg_days_to_resolve: number | null;
+  grade: string;
+}
 
 const MEDALS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
+const GRADE_BADGE: Record<string, string> = {
+  A: 'bg-emerald-50 text-emerald-700',
+  B: 'bg-blue-50 text-blue-700',
+  C: 'bg-amber-50 text-amber-700',
+  D: 'bg-orange-50 text-orange-700',
+  F: 'bg-red-50 text-red-700',
+};
+const GRADE_BAR: Record<string, string> = {
+  A: 'bg-emerald-500',
+  B: 'bg-blue-500',
+  C: 'bg-amber-500',
+  D: 'bg-orange-500',
+  F: 'bg-red-500',
+};
 
 function LeaderboardContent() {
   const [leaders, setLeaders] = useState<Leader[]>([]);
   const [scopeLabel, setScopeLabel] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [scope, setScope] = useState<Scope>('all');
+  const [scope, setScope] = useState<Tab>('all');
   const [myCity, setMyCity] = useState<string | null>(null);
   const [myWard, setMyWard] = useState<string | null>(null);
+  const [wardData, setWardData] = useState<WardHealth[]>([]);
 
   // Read the citizen's saved location and default to the most specific scope.
   useEffect(() => {
@@ -50,13 +77,30 @@ function LeaderboardContent() {
       .finally(() => setLoading(false));
   }, [myCity, myWard]);
 
-  // (Re)load whenever the resolved scope or saved location changes.
-  useEffect(() => { load(scope); }, [scope, load]);
+  const loadWardHealth = useCallback(() => {
+    setLoading(true);
+    setError('');
+    fetch('/api/accountability')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.data) setWardData(d.data);
+        else setError(d.error || 'Failed to load ward health.');
+      })
+      .catch(() => setError('Failed to load ward health.'))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const TABS: { key: Scope; label: string; disabled: boolean }[] = [
+  // (Re)load whenever the resolved scope or saved location changes.
+  useEffect(() => {
+    if (scope === 'health') loadWardHealth();
+    else load(scope);
+  }, [scope, load, loadWardHealth]);
+
+  const TABS: { key: Tab; label: string; disabled: boolean }[] = [
     { key: 'ward', label: 'My Ward', disabled: !(myWard && myCity) },
     { key: 'city', label: 'My City', disabled: !myCity },
     { key: 'all', label: 'All', disabled: false },
+    { key: 'health', label: 'Ward Health', disabled: false },
   ];
 
   return (
@@ -67,7 +111,7 @@ function LeaderboardContent() {
           Civic Leaderboard
         </h1>
         <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
-          Top reporters{scopeLabel ? ` · ${scopeLabel}` : ''}
+          {scope === 'health' ? 'Government accountability index' : `Top reporters${scopeLabel ? ` · ${scopeLabel}` : ''}`}
         </p>
       </header>
 
@@ -91,7 +135,7 @@ function LeaderboardContent() {
       </div>
 
       <main className="max-w-[560px] mx-auto">
-        {!myWard && (
+        {!myWard && scope !== 'health' && (
           <p className="text-center text-[12px] text-on-surface-variant font-body-md mb-md">
             File a report to unlock your ward & city rankings.
           </p>
@@ -110,13 +154,56 @@ function LeaderboardContent() {
           </div>
         )}
 
-        {!loading && !error && leaders.length === 0 && (
+        {/* Ward Health — government accountability index */}
+        {!loading && !error && scope === 'health' && (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Government accountability index — based on issue resolution rate per ward.
+            </p>
+            {wardData.length === 0 ? (
+              <div className="text-center py-12 text-on-surface-variant font-body-md">
+                No ward data yet.
+              </div>
+            ) : (
+              wardData.map((ward, i) => (
+                <div key={`${ward.city}-${ward.ward}-${i}`} className="bg-white border border-gray-100 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-950">{ward.ward}</p>
+                      <p className="text-xs text-gray-400">{ward.city}</p>
+                    </div>
+                    <span className={`text-lg font-bold px-3 py-1 rounded-xl ${GRADE_BADGE[ward.grade] ?? 'bg-gray-100 text-gray-500'}`}>
+                      {ward.grade}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+                    <span>{ward.total_issues} issues</span>
+                    <span>{ward.resolved_count} resolved</span>
+                    <span>{ward.resolution_rate ?? 0}% rate</span>
+                    {ward.avg_days_to_resolve != null && <span>~{ward.avg_days_to_resolve} days avg</span>}
+                  </div>
+                  <div className="mt-2 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-1.5 rounded-full ${GRADE_BAR[ward.grade] ?? 'bg-gray-300'}`}
+                      style={{ width: `${ward.resolution_rate ?? 0}%` }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+            <p className="text-xs text-gray-300 text-center pt-2">
+              A = 80%+ resolved · F = under 20% resolved
+            </p>
+          </div>
+        )}
+
+        {!loading && !error && scope !== 'health' && leaders.length === 0 && (
           <div className="text-center py-12 text-on-surface-variant font-body-md">
             No reports in this area yet. Be the first to file one!
           </div>
         )}
 
-        {!loading && leaders.length > 0 && (
+        {!loading && scope !== 'health' && leaders.length > 0 && (
           <div className="flex flex-col gap-sm">
             {leaders.map((l, i) => (
               <div

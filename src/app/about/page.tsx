@@ -31,7 +31,7 @@ export default function AboutPage() {
       </LegalSection>
 
       <LegalSection heading="Open source & credits">
-        <p>NODAL is built on Next.js, Supabase, Google Gemini, and OpenStreetMap (Nominatim). It was created for the Vibe2Ship 2026 hackathon as a demonstration of agentic civic tooling.</p>
+        <p>NODAL is built on Next.js, Supabase, and OpenStreetMap (Nominatim). The AI backbone is <strong>Gemini 2.5 Flash, accessed via the Google AI Studio API</strong> — the prompts and agentic pipeline were built and prototyped in Google AI Studio. Production is deployed on <strong>Google Cloud Run</strong> (part of the Google Cloud ecosystem). It was created for the Vibe2Ship 2026 hackathon as a demonstration of agentic civic tooling.</p>
       </LegalSection>
 
       <LegalSection heading="Contact">

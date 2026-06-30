@@ -81,6 +81,61 @@ function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }>
   });
 }
 
+// Read any file as raw base64 (no re-encoding) — used for video uploads.
+function readFileBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = () => reject(new Error('Could not read file'));
+    r.readAsDataURL(file);
+  });
+}
+
+// Grab a representative still frame from a video (a little past the start to avoid
+// a black first frame), downscaled to JPEG. Best-effort: resolves undefined on any
+// failure. This frame is persisted/displayed and used as the analysis fallback.
+function extractVideoFrame(file: File): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    try {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.muted = true;
+      v.playsInline = true;
+      const url = URL.createObjectURL(file);
+      const cleanup = () => URL.revokeObjectURL(url);
+      v.onloadedmetadata = () => { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); };
+      v.onseeked = () => {
+        try {
+          const max = 1280;
+          const scale = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight) || 1);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(v.videoWidth * scale) || 640;
+          canvas.height = Math.round(v.videoHeight * scale) || 360;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { cleanup(); return resolve(undefined); }
+          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          cleanup();
+          resolve(dataUrl.split(',')[1]);
+        } catch { cleanup(); resolve(undefined); }
+      };
+      v.onerror = () => { cleanup(); resolve(undefined); };
+      v.src = url;
+    } catch { resolve(undefined); }
+  });
+}
+
+// Turn the picked file into the API payload. Images are downscaled to JPEG (as
+// before); videos are sent as-is for Gemini's native video understanding, with an
+// extracted still frame alongside for storage + fallback.
+async function fileToPayload(file: File): Promise<{ base64: string; mimeType: string; frameBase64?: string }> {
+  if (file.type.startsWith('video/')) {
+    const [base64, frameBase64] = await Promise.all([readFileBase64(file), extractVideoFrame(file)]);
+    return { base64, mimeType: file.type, frameBase64 };
+  }
+  return fileToBase64(file);
+}
+
 function getPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('Location not supported'));
@@ -128,18 +183,22 @@ interface DetectedLocation {
 // one-by-one sense of progress through the (mostly server-side) pipeline, and
 // the screen snaps to the confirmation when the request actually returns.
 const STAGES = [
-  { label: 'Analyzing photo with Gemini Vision', sub: 'Grading severity & category' },
-  { label: 'Routing to the correct department', sub: 'Matching ward → corporation → department' },
-  { label: 'AI selecting applicable Indian law', sub: 'Reasoning over RPWD, RTI & municipal acts' },
-  { label: 'Drafting the legal notice', sub: 'Complaint + RTI, grounded in the selected statutes' },
-  { label: 'Detecting patterns in ward data', sub: 'Checking for repeat unresolved reports nearby' },
-  { label: 'Preparing dispatch package', sub: 'Notice ready — awaiting your review and send' },
+  { icon: '🔍', name: 'Vision Agent', sub: 'Analyzing photo damage…' },
+  { icon: '⚖️', name: 'Legal Agent', sub: 'Selecting applicable acts…' },
+  { icon: '📍', name: 'Routing Agent', sub: 'Matching ward & officer…' },
+  { icon: '🛰️', name: 'Context Agent', sub: 'Checking nearby infrastructure…' },
+  { icon: '📧', name: 'Notice Agent', sub: 'Drafting dispatch notice…' },
 ];
-const STAGE_MS = 2600; // time each stage is shown before advancing
+const STAGE_MS = 1200; // time each stage animates before advancing
 
 function ReportContent() {
-  const { user, signOut, signIn } = useAuth();
+  const { user, signIn } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoFileRef = useRef<HTMLInputElement>(null);
+  // Mobile gets a camera-forced photo input (capture only fires reliably when the
+  // accept list is image-only); desktop gets a plain photo/video picker. Detected
+  // on mount to avoid a hydration mismatch (server can't read userAgent).
+  const [isMobile, setIsMobile] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [previewUrl, setPreviewUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -160,6 +219,17 @@ function ReportContent() {
     if (!user) { setShowSignIn(true); return; }
     fileRef.current?.click();
   }
+
+  // Secondary path (mobile only): pick a video / file from the gallery — uses the
+  // no-capture input so the system file picker opens instead of the camera.
+  function startVideoReport() {
+    if (!user) { setShowSignIn(true); return; }
+    videoFileRef.current?.click();
+  }
+
+  useEffect(() => {
+    setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  }, []);
 
   useEffect(() => {
     if (user && showSignIn) {
@@ -206,6 +276,12 @@ function ReportContent() {
 
   async function submit() {
     if (!file || !loc || !loc.city || !loc.ward.trim()) return;
+    // Guard oversize video before encoding (server enforces the same limit).
+    if (file.type.startsWith('video/') && file.size > 15 * 1024 * 1024) {
+      setError('Video must be under 15MB. Please use a shorter or lower-resolution clip.');
+      setPhase('error');
+      return;
+    }
     // GPS failed → use the chosen city's centre so the API's in-bounds check and
     // stored coords stay consistent with the manual selection (ward override routes).
     const { lat, lng } = loc.gpsOk ? { lat: loc.lat, lng: loc.lng } : cityCenter(loc.city);
@@ -217,7 +293,7 @@ function ReportContent() {
       setStep((s) => Math.min(s + 1, STAGES.length - 1));
     }, STAGE_MS);
     try {
-      const { base64, mimeType } = await fileToBase64(file);
+      const { base64, mimeType, frameBase64 } = await fileToPayload(file);
 
       const res = await fetch('/api/analyze', {
         method: 'POST',
@@ -225,6 +301,7 @@ function ReportContent() {
         body: JSON.stringify({
           imageBase64: base64,
           mimeType,
+          frameBase64,
           gpsLat: lat,
           gpsLng: lng,
           citizenEmail: user?.email || undefined,
@@ -353,13 +430,12 @@ function ReportContent() {
         <div className="flex items-start justify-between gap-md">
           <h1 className="font-display-lg text-[40px] font-bold tracking-tighter text-primary">NODAL</h1>
           {user ? (
-            <div className="flex items-center gap-2 shrink-0">
+            <Link href="/profile" aria-label="Your profile" className="shrink-0">
               {user.picture
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={user.picture} alt="" className="w-7 h-7 rounded-full" referrerPolicy="no-referrer" />
                 : <span className="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center text-[12px] font-bold">{user.name.charAt(0).toUpperCase()}</span>}
-              <button onClick={signOut} className="font-body-md text-[12px] text-on-surface-variant underline">Sign out</button>
-            </div>
+            </Link>
           ) : (
             <button
               onClick={signIn}
@@ -381,11 +457,23 @@ function ReportContent() {
       </header>
 
       <main className="max-w-[560px] mx-auto px-gutter">
+        {/* Primary input. Mobile: image-only + capture → forces the rear camera
+            (combined image/video accept makes browsers ignore capture). Desktop:
+            plain photo/video picker, no capture (camera can't be forced anyway). */}
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
-          capture="environment"
+          accept={isMobile ? 'image/*' : 'image/*,video/*'}
+          {...(isMobile ? { capture: 'environment' as const } : {})}
+          onChange={onPick}
+          className="hidden"
+        />
+        {/* Secondary input (mobile fallback): photo OR video from the gallery,
+            no capture → opens the system file picker. */}
+        <input
+          ref={videoFileRef}
+          type="file"
+          accept="image/*,video/*"
           onChange={onPick}
           className="hidden"
         />
@@ -403,9 +491,21 @@ function ReportContent() {
               </div>
               <div className="text-center">
                 <p className="font-semibold text-gray-950 text-[15px]">Report an issue</p>
-                <p className="text-sm text-gray-400 mt-0.5">Take or upload a photo</p>
+                <p className="text-sm text-gray-400 mt-0.5">
+                  {isMobile ? '📸 Camera will open automatically' : '📁 Upload a photo or video from your device'}
+                </p>
               </div>
             </button>
+
+            {/* Mobile fallback — explicit picker for video / gallery files */}
+            {isMobile && (
+              <button
+                onClick={startVideoReport}
+                className="block mx-auto mt-3 text-sm text-gray-400 hover:text-gray-950 transition-colors underline"
+              >
+                Or choose video/file
+              </button>
+            )}
 
             {/* Sign-in prompt — shown when a signed-out citizen taps Report */}
             {showSignIn && !user && (
@@ -476,8 +576,20 @@ function ReportContent() {
         {/* PREVIEW */}
         {phase === 'preview' && (
           <div className="animate-fade-up">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={previewUrl} alt="preview" className="w-full rounded-xl mb-md object-cover max-h-96 hairline-all" />
+            {file?.type.startsWith('video/') ? (
+              <>
+                <video src={previewUrl} controls playsInline className="w-full rounded-xl mb-sm max-h-96 hairline-all bg-black" />
+                <div className="flex items-center gap-2 bg-surface hairline-all rounded-full px-md py-sm mb-md">
+                  <span className="text-[15px]">🎥</span>
+                  <span className="font-body-md text-[13px] text-on-surface-variant">
+                    Video detected — AI will extract the key frame for analysis
+                  </span>
+                </div>
+              </>
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={previewUrl} alt="preview" className="w-full rounded-xl mb-md object-cover max-h-96 hairline-all" />
+            )}
             {user && (
               <div className="flex items-center gap-2 bg-surface hairline-all rounded-full px-md py-sm mb-sm">
                 <span className="material-symbols-outlined text-[18px] text-on-surface-variant">mail</span>
@@ -586,44 +698,53 @@ function ReportContent() {
             <div className="bg-surface hairline-all rounded-xl p-lg">
               <p className="font-headline-md text-[16px] text-primary">Filing your report</p>
               <p className="font-body-md text-[13px] text-on-surface-variant mb-lg">
-                Our 6-tool civic agent is on it — this usually takes ~15 seconds.
+                Our 5-agent civic pipeline is on it — this usually takes ~15 seconds.
               </p>
               <div className="flex flex-col gap-md">
                 {STAGES.map((s, i) => {
                   const done = i < step;
                   const active = i === step;
+                  // blue active · green done · gray pending
+                  const barColor = done ? '#10b981' : active ? '#2563eb' : '#e5e7eb';
                   return (
                     <div
-                      key={s.label}
-                      className={`flex items-center gap-md transition-opacity duration-300 ${i > step ? 'opacity-40' : 'opacity-100'}`}
+                      key={s.name}
+                      className={`transition-opacity duration-300 ${i > step ? 'opacity-40' : 'opacity-100'}`}
                     >
-                      <div
-                        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${
-                          done ? 'bg-primary text-on-primary'
-                          : active ? 'bg-primary/10 text-primary'
-                          : 'bg-surface-variant text-on-surface-variant'
-                        }`}
-                      >
-                        {done ? (
-                          <span className="material-symbols-outlined text-[18px]">check</span>
-                        ) : active ? (
-                          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <span className="font-stats-tabular text-[12px]">{i + 1}</span>
+                      <div className="flex items-center gap-md mb-1.5">
+                        <span className="text-[18px] leading-none w-6 text-center shrink-0">{s.icon}</span>
+                        <p className={`flex-1 font-headline-md text-[14px] ${done || active ? 'text-primary' : 'text-on-surface-variant'}`}>
+                          {s.name}
+                          {active && (
+                            <span className="font-body-md text-[12px] text-on-surface-variant ml-2">{s.sub}</span>
+                          )}
+                        </p>
+                        {done && (
+                          <span className="material-symbols-outlined text-[18px] shrink-0" style={{ color: '#10b981' }}>
+                            check_circle
+                          </span>
                         )}
                       </div>
-                      <div className="flex-1">
-                        <p className={`font-headline-md text-[14px] ${done || active ? 'text-primary' : 'text-on-surface-variant'}`}>
-                          {s.label}
-                        </p>
-                        {active && (
-                          <p className="font-body-md text-[12px] text-on-surface-variant">{s.sub}</p>
-                        )}
+                      <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                        <div
+                          className={`h-1.5 rounded-full ${active ? 'animate-agent-bar' : ''}`}
+                          style={{
+                            backgroundColor: barColor,
+                            width: done ? '100%' : active ? undefined : '0%',
+                            ['--agent-ms' as string]: `${STAGE_MS}ms`,
+                          }}
+                        />
                       </div>
                     </div>
                   );
                 })}
               </div>
+
+              {step >= STAGES.length && (
+                <p className="mt-lg font-headline-md text-[14px] text-center" style={{ color: '#10b981' }}>
+                  ✓ Ready — Reviewing your notice
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -728,6 +849,40 @@ function ReportContent() {
                 </div>
               </div>
 
+              {/* Why this officer was assigned — derived from the routing response. */}
+              {(() => {
+                const ward = result.route.ward || 'your area';
+                const city = result.route.city || 'your city';
+                const department = result.route.department?.name || 'the municipal corporation';
+                const DOMAIN: Record<string, string> = {
+                  damaged_road: 'Roads', broken_footpath: 'Roads', waterlogging: 'Drainage',
+                  damaged_streetlight: 'Lighting', waste_dumping: 'Sanitation',
+                  broken_ramp_accessibility: 'Roads', dangerous_excavation: 'Roads', other: 'General',
+                };
+                const domain = DOMAIN[result.analysis.category] ?? 'General';
+                const priority = getPriority(result.adjustedSeverity ?? result.analysis.severity);
+                const officerRank = priority === 'High' ? 'Commissioner' : priority === 'Medium' ? 'Zonal Officer' : 'Ward Officer';
+                const lines = [
+                  `Ward boundary matched (Ward ${ward}, ${city})`,
+                  `Department jurisdiction: ${department} (${domain})`,
+                  'State PWD / Corporation zone confirmed',
+                  `Severity level requires ${officerRank} or above`,
+                ];
+                return (
+                  <div className="px-md pb-md">
+                    <p className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-sm">Officer assigned because</p>
+                    <ul className="flex flex-col gap-1.5">
+                      {lines.map((line, i) => (
+                        <li key={i} className="flex items-start gap-2 font-body-md text-[13px] text-on-surface-variant">
+                          <span className="shrink-0" style={{ color: '#10b981' }}>✓</span>
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
+
               <div className="px-md py-sm bg-surface-container-lowest hairline-t flex items-center gap-2">
                 <span className="relative flex w-1.5 h-1.5">
                   <span className="absolute inline-flex w-full h-full rounded-full bg-primary opacity-75 animate-ping" />
@@ -796,6 +951,101 @@ function ReportContent() {
                 </p>
               </div>
             </div>
+
+            {/* Location context + priority explainer (Tool 1.5 — Places proximity).
+                Only added when nearby civic-critical facilities were found. */}
+            {(() => {
+              const sev = result.adjustedSeverity ?? result.analysis.severity;
+              const level = getSeverityLevel(sev); // critical | high | medium | low
+              const sevColor = SEVERITY_COLORS[level];
+              const poiEmoji: Record<string, string> = {
+                hospital: '🏥', school: '🏫', bus_station: '🚌', police: '🚓', fire_station: '🚒',
+              };
+              const poiLabel: Record<string, string> = {
+                hospital: 'Hospital', school: 'School', bus_station: 'Bus Stop',
+                police: 'Police', fire_station: 'Fire Station',
+              };
+              const riskNote: Record<string, string> = {
+                hospital: 'emergency access risk', fire_station: 'emergency access risk',
+                police: 'emergency access risk', school: 'vulnerable pedestrians',
+                bus_station: 'high pedestrian zone',
+              };
+              const boosted =
+                result.proximityContext.length > 0 &&
+                result.adjustedSeverity > result.analysis.severity;
+
+              return (
+                <>
+                  {/* Location Context card */}
+                  {result.proximityContext.length > 0 && (
+                    <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
+                      <div className="flex items-center gap-2 mb-sm text-primary">
+                        <span className="material-symbols-outlined text-[18px]">location_on</span>
+                        <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Location context</h3>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {result.proximityContext.map((p, i) => (
+                          <span
+                            key={i}
+                            className="font-body-md text-[12px] bg-surface-container rounded-full px-3 py-1 text-primary"
+                          >
+                            {poiEmoji[p.type] ?? '📍'} {poiLabel[p.type] ?? p.type} {p.distanceM}m
+                          </span>
+                        ))}
+                      </div>
+                      {boosted && (
+                        <p className="font-body-md text-[12px] mt-sm" style={{ color: sevColor }}>
+                          Severity automatically elevated from {result.analysis.severity}/10 to {result.adjustedSeverity}/10
+                          due to proximity to critical infrastructure.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Severity bar */}
+                  <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
+                    <div className="flex items-center justify-between mb-sm">
+                      <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Severity</h3>
+                      <span className="font-stats-tabular text-[13px] font-semibold" style={{ color: sevColor }}>
+                        {sev}/10 · {level.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-surface-container rounded-full overflow-hidden">
+                      <div
+                        className="h-2 rounded-full transition-all duration-700"
+                        style={{ width: `${sev * 10}%`, backgroundColor: sevColor }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Why this priority? — expandable */}
+                  <details className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md group">
+                    <summary className="flex items-center justify-between cursor-pointer list-none text-primary">
+                      <span className="font-headline-md text-[14px]">Why this priority?</span>
+                      <span className="material-symbols-outlined text-[20px] text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                    </summary>
+                    <div className="mt-md pt-sm hairline-t">
+                      <p className="font-body-md text-[13px] text-primary mb-sm">
+                        Gemini assessed this report as <strong>{getPriority(sev).toUpperCase()}</strong> priority because:
+                      </p>
+                      <ul className="flex flex-col gap-1">
+                        <li className="font-body-md text-[12px] text-on-surface-variant">
+                          ✓ {CATEGORY_LABELS[result.analysis.category]} detected
+                        </li>
+                        {result.proximityContext.map((p, i) => (
+                          <li key={i} className="font-body-md text-[12px] text-on-surface-variant">
+                            ✓ Near {p.name} ({p.distanceM}m){riskNote[p.type] ? ` — ${riskNote[p.type]}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="font-body-md text-[12px] text-on-surface-variant mt-sm">
+                        Confidence: {Math.round(result.agentReasoning.confidence * 100)}%
+                      </p>
+                    </div>
+                  </details>
+                </>
+              );
+            })()}
 
             {/* Drafted notice — full text, with copy (manual-send model) */}
             <div className="animate-fade-up delay-300 mt-lg text-left">

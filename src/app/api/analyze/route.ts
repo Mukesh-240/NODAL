@@ -13,21 +13,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sanitizeForLogging } from '@/lib/logger';
-import { analyzeImage, draftDispatch, validateImageInput, buildLegalFooter, selectApplicableLegalActs, selectLegalActsWithGemini } from '@/lib/gemini';
+import { analyzeImage, draftDispatch, validateImageInput, buildLegalFooter, selectApplicableLegalActs, selectLegalActsWithGemini, isVideoMime } from '@/lib/gemini';
 import { routeIssue, generateTrackingCode, isInIndia } from '@/lib/routingMatrix';
 import { buildDispatchChain } from '@/lib/recipients';
 import { insertIssue, uploadIssueImage, upsertCivicUser, detectPattern } from '@/lib/supabase';
 import { sendConfirmationEmail } from '@/lib/email';
 import { generateUUID } from '@/lib/utils';
-import { AnalyzeRequest, AnalyzeResponse, AgentReasoning, SupportedCity, getPriority } from '@/types';
+import { getNearbyContext, proximityBoost } from '@/lib/places';
+import { AnalyzeRequest, AnalyzeResponse, AgentReasoning, ProximityPlace, SupportedCity, getPriority } from '@/types';
 
 // ── Input Validation Schema (Zod) ─────────────────────────────────────────────
 const AnalyzeRequestSchema = z.object({
   imageBase64: z.string()
     .min(100, 'Image too small')
-    .max(10_000_000, 'Image too large (max 10MB)')
+    .max(22_000_000, 'File too large (max ~15MB)')
     .regex(/^[A-Za-z0-9+/=]+$/, 'Invalid base64'),
-  mimeType: z.string().regex(/^image\/(jpeg|jpg|png|webp)$/, 'Invalid image type'),
+  mimeType: z.string().regex(/^(image\/(jpeg|jpg|png|webp)|video\/(mp4|webm|quicktime))$/, 'Invalid media type'),
+  // Client-extracted still frame for video uploads (persisted + analysis fallback).
+  frameBase64: z.string().max(10_000_000).regex(/^[A-Za-z0-9+/=]+$/, 'Invalid base64').optional(),
   gpsLat: z.number()
     .min(6.0, 'Outside India bounds')
     .max(37.1, 'Outside India bounds'),
@@ -107,7 +110,7 @@ export async function POST(request: NextRequest) {
 
   // Size check first (before parsing JSON)
   const contentLength = request.headers.get('content-length');
-  if (contentLength && parseInt(contentLength) > 15_000_000) {
+  if (contentLength && parseInt(contentLength) > 30_000_000) {
     return NextResponse.json(
       { success: false, error: 'Request too large' },
       { status: 413 }
@@ -129,7 +132,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { imageBase64, mimeType, gpsLat, gpsLng, citizenEmail, citizenName, reporterSession, cityOverride, wardOverride } = body;
+  const { imageBase64, mimeType, frameBase64, gpsLat, gpsLng, citizenEmail, citizenName, reporterSession, cityOverride, wardOverride } = body;
+  const isVideo = isVideoMime(mimeType);
 
   // ── GPS Validation ──────────────────────────────────────────────────────────
   if (!isInIndia(gpsLat, gpsLng)) {
@@ -157,6 +161,14 @@ export async function POST(request: NextRequest) {
 
   const issueId = generateUUID();
 
+  // ── Tool 1.5: places proximity (best-effort, runs before vision so the nearby
+  // context can inform Gemini's severity reasoning). Null if no key / API fails.
+  logTool('places_proximity', 'start');
+  const tpx = Date.now();
+  const nearby = await getNearbyContext(gpsLat, gpsLng);
+  logTool('places_proximity', 'done', Date.now() - tpx);
+  const proximityContext: ProximityPlace[] = nearby?.places ?? [];
+
   // ════════════════════════════════════════════════════════════════════════════
   // TOOL 1: analyze_image — Gemini 1.5 Pro (multimodal vision)
   // ════════════════════════════════════════════════════════════════════════════
@@ -164,7 +176,19 @@ export async function POST(request: NextRequest) {
   try {
     logTool('analyze_image', 'start');
     const t1 = Date.now();
-    analysis = await analyzeImage(imageBase64, mimeType, wardOverride, cityOverride);
+    if (isVideo) {
+      // Gemini native video understanding. If it fails, fall back to the client-
+      // extracted still frame (treated as an image) so the report still goes through.
+      try {
+        analysis = await analyzeImage(imageBase64, mimeType, wardOverride, cityOverride, nearby?.contextString);
+      } catch (vErr) {
+        if (!frameBase64) throw vErr;
+        console.warn('[analyze_image] video analysis failed — falling back to extracted frame:', (vErr as Error)?.message);
+        analysis = await analyzeImage(frameBase64, 'image/jpeg', wardOverride, cityOverride, nearby?.contextString);
+      }
+    } else {
+      analysis = await analyzeImage(imageBase64, mimeType, wardOverride, cityOverride, nearby?.contextString);
+    }
     logTool('analyze_image', 'done', Date.now() - t1);
 
     // Confidence gate: reject garbage images
@@ -181,6 +205,23 @@ export async function POST(request: NextRequest) {
       { success: false, error: 'AI analysis failed. Please try again in a moment.' },
       { status: 503 }
     );
+  }
+
+  // ── Severity boost (proximity) + strict cap. 9-10 is reserved for genuine
+  // emergencies — without one in the description, the score is hard-capped at 8 so
+  // ordinary defects can't read as critical. Applied to analysis.severity so the
+  // chain/legal/draft/DB all reflect it. Boost can be fractional (bus = +0.5) →
+  // round up after adding.
+  const originalSeverity = analysis.severity;
+  const { boost, reasons: proximityReasons } = nearby ? proximityBoost(nearby.nearest) : { boost: 0, reasons: [] };
+  const EMERGENCY_RE = /\b(impassable|collaps\w*|structural|exposed\s+(?:wire|cable)|live\s+wire|open\s+manhole|electrocution|downed\s+(?:power|wire))\b/i;
+  const isEmergency = EMERGENCY_RE.test(analysis.description);
+  const hardCap = isEmergency ? 10 : 8;
+  const adjustedSeverity = Math.min(hardCap, Math.ceil(originalSeverity + boost));
+  if (adjustedSeverity !== originalSeverity) {
+    analysis.severity = adjustedSeverity;
+    const why = boost > 0 ? `+${boost} (${proximityReasons.join('; ')}), ` : '';
+    console.log(`[severity] ${originalSeverity} → ${adjustedSeverity} (${why}cap ${hardCap}${isEmergency ? ' — emergency' : ''})`);
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -245,6 +286,9 @@ export async function POST(request: NextRequest) {
   // legalActs (deterministic) is the guaranteed backstop; legalReasoning is the AI layer.
   const legalActs = selectApplicableLegalActs(analysis, route.city);
   const escalationReasoning: string[] = ['Ward officer CC: standard for all reports'];
+  if (boost > 0) {
+    escalationReasoning.push(`Proximity boost: ${proximityReasons.join('; ')} → severity ${originalSeverity} → ${adjustedSeverity}`);
+  }
   if (getPriority(analysis.severity) === 'High') {
     escalationReasoning.push(`Severity ${analysis.severity}/10 is High → Commissioner escalation`);
   }
@@ -303,8 +347,12 @@ export async function POST(request: NextRequest) {
     logTool('log_to_database', 'start');
     const t4 = Date.now();
 
-    // Upload image to Supabase Storage
-    const imageUrl = await uploadIssueImage(imageBase64, mimeType, issueId);
+    // Upload to Supabase Storage. For video we persist the client-extracted still
+    // frame (a real JPEG) — image_url is rendered in <img> across the app, so a
+    // video URL there would break the map pins / track preview.
+    const storeBase64 = isVideo && frameBase64 ? frameBase64 : imageBase64;
+    const storeMime = isVideo && frameBase64 ? 'image/jpeg' : mimeType;
+    const imageUrl = await uploadIssueImage(storeBase64, storeMime, issueId);
 
     // Insert the full issue record
     await insertIssue({
@@ -407,6 +455,8 @@ export async function POST(request: NextRequest) {
     chain,
     agentReasoning,
     legalReasoning,
+    proximityContext,
+    adjustedSeverity,
     pointsEarned: 50,
   };
 

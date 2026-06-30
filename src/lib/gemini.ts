@@ -30,42 +30,47 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 // Forces JSON output with structured schema.
 // Returns: severity, category, RPWD violation, confidence, description.
 
-function buildAnalyzeImagePrompt(ward?: string, city?: string): string {
-  return `You are a civic infrastructure auditor for Indian municipalities.
-You are given an image of a public space in India.
+// Video MIME types we accept and pass to Gemini's native video understanding.
+export const VIDEO_MIME_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
+export function isVideoMime(mimeType: string): boolean {
+  return VIDEO_MIME_TYPES.includes(mimeType.toLowerCase());
+}
 
-SEVERITY SCORING GUIDE — use this to calibrate your score:
-
-For DAMAGED ROAD / BROKEN FOOTPATH:
-1-3: Surface crack, minor pothole, cosmetic damage only
-4-6: Multiple potholes, uneven surface, slippery when wet, partial accessibility obstruction
-7-8: Deep potholes, large broken sections, wheelchair/elderly cannot pass safely, immediate fall risk
-9-10: Road collapsed, completely impassable, structural failure, immediate danger to all users
-
-For WATERLOGGING / BLOCKED DRAIN:
-1-3: Minor puddle, drains within hours, walkable
-4-6: Significant waterlogging, drain blocked, slippery surface, partial road obstruction
-7-8: Road flooded, completely impassable, wheelchair impossible, sewage mixing, health hazard
-9-10: Structural drain collapse, sewage overflow, road unusable, emergency health risk
-
-For WASTE DUMPING / GARBAGE:
-1-3: Small contained pile, away from walkway, no immediate hazard
-4-6: Large dump, partial footpath blocked, near residential area, odour and hygiene concern
-7-8: Blocking footpath entirely, near school/hospital/water body, serious health and accessibility hazard
-9-10: Massive illegal dump, complete access blockage, severe health emergency, fire risk
-
-For DAMAGED STREETLIGHT:
-1-3: Single light out, area still adequately lit
-4-6: Multiple lights out, dark stretch, safety concern at night
-7-8: Entire street dark, no visibility, dangerous for pedestrians, elderly/disabled cannot navigate safely
-9-10: Damaged pole, exposed wiring, live wire risk, immediate electrocution danger
-
-LOCATION CONTEXT — adjust severity UP only, never down:
+function buildAnalyzeImagePrompt(ward?: string, city?: string, nearbyContext?: string, isVideo = false): string {
+  const medium = isVideo ? 'short video' : 'image';
+  const intro = isVideo
+    ? `Analyze this video of civic infrastructure damage in India. Identify the primary issue, assess severity, and extract the worst-affected moment.`
+    : `You are given an image of a public space in India.`;
+  // When real Places data is available, present it and let Gemini weigh it
+  // qualitatively — the numeric severity boost is applied deterministically
+  // downstream (see lib/places.ts proximityBoost), so we DON'T also ask the model
+  // for a "+1/+2" here (avoids double-counting). With no Places data, fall back to
+  // the original generic location nudge.
+  const locationBlock = nearbyContext
+    ? `LOCATION CONTEXT — never reduce severity based on location:
+Current location: ${ward ?? 'unknown ward'}, ${city ?? 'unknown city'}.
+${nearbyContext} (within 500m). Infrastructure failure near a hospital, school, or emergency service endangers the most vulnerable — weigh this in your severity reasoning.`
+    : `LOCATION CONTEXT — adjust severity UP only, never down:
 - Near hospital, school, or busy market: +1 to severity
 - Main road or high-footfall area: +1 to severity
 - Maximum adjustment: +2 points total
 - Never reduce severity based on location
-Current location: ${ward ?? 'unknown ward'}, ${city ?? 'unknown city'}
+Current location: ${ward ?? 'unknown ward'}, ${city ?? 'unknown city'}`;
+  return `You are a civic infrastructure auditor for Indian municipalities.
+${intro}
+
+Score severity from 1-10 using this strict scale:
+1-2: Cosmetic only — paint peeling, minor discoloration, tiny crack
+3-4: Minor damage — small pothole, slightly uneven pavement, dim streetlight, surface crack under 5cm wide
+5-6: Moderate — pothole with water pooling, broken footpath tile, flickering streetlight, drainage partially blocked
+7-8: Serious — large pothole causing vehicle damage risk, broken drain overflowing, streetlight completely out on busy road, collapsed footpath section
+9-10: RESERVED ONLY FOR: road completely impassable, open manhole, live electrical wire exposed, structural collapse risk
+
+A pothole with water = 5-6. Not 9. Not 10.
+Be conservative. Most reports should score 4-7.
+Proximity boosts apply AFTER base scoring.
+
+${locationBlock}
 
 ACCESSIBILITY IMPACT GUIDE:
 HIGH: Completely blocks or makes unsafe for wheelchair users, elderly, visually impaired, or people with mobility issues
@@ -81,12 +86,12 @@ Analyze the image and return ONLY a valid JSON object with these exact fields:
 - category: exactly one of these strings: damaged_road | broken_footpath | waterlogging | damaged_streetlight | waste_dumping | broken_ramp_accessibility | dangerous_excavation | other
 - rpwd_violation: boolean — true if the hazard affects wheelchair accessibility, ramp access, footpath navigation, or tactile paths, making it a potential RPWD Act 2016 violation
 - violation_section: string — write "Section 40" if rpwd_violation is true (Section 40 of the RPWD Act 2016 mandates accessible public infrastructure), otherwise write ""
-- description: one clear sentence describing what you see in the image
+- description: one clear sentence describing the worst-affected moment in the ${medium}
 - confidence: float from 0 to 1 representing your confidence in this classification
 
 Return ONLY the JSON object. No preamble, no explanation, no markdown code blocks. Just the JSON.
 
-If the image does not show a civic infrastructure issue, set severity to 1, category to "other", and confidence below 0.4.`;
+If the ${medium} does not show a civic infrastructure issue, set severity to 1, category to "other", and confidence below 0.4.`;
 }
 
 export async function analyzeImage(
@@ -94,20 +99,24 @@ export async function analyzeImage(
   mimeType: string,
   ward?: string,
   city?: string,
+  nearbyContext?: string,
 ): Promise<AnalyzeImageOutput> {
+  // Gemini 2.5 Flash understands video natively — same inlineData mechanism, just a
+  // video MIME type. Video needs a longer timeout than a still image.
+  const video = isVideoMime(mimeType);
   const model = genAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
     generationConfig: {
       responseMimeType: 'application/json',
       temperature: 0.1, // Low temperature for consistent structured output
     },
-  }, { timeout: 25_000 }); // fail fast instead of hanging on a slow Gemini response
+  }, { timeout: video ? 55_000 : 25_000 }); // fail fast instead of hanging on a slow Gemini response
 
-  const imagePart: Part = {
-    inlineData: { data: imageBase64, mimeType: mimeType as 'image/jpeg' | 'image/png' | 'image/webp' },
+  const mediaPart: Part = {
+    inlineData: { data: imageBase64, mimeType },
   };
 
-  const result = await model.generateContent([buildAnalyzeImagePrompt(ward, city), imagePart]);
+  const result = await model.generateContent([buildAnalyzeImagePrompt(ward, city, nearbyContext, video), mediaPart]);
   const text = result.response.text().trim();
 
   try {
@@ -462,9 +471,18 @@ Rules:
 
 // ── Validate image before sending to Gemini ───────────────────────────────────
 export function validateImageInput(mimeType: string, sizeBytes: number): { valid: boolean; error?: string } {
+  if (isVideoMime(mimeType)) {
+    if (sizeBytes > 15 * 1024 * 1024) {
+      return { valid: false, error: 'Video must be under 15MB. Please use a shorter or lower-resolution clip.' };
+    }
+    if (sizeBytes < 1000) {
+      return { valid: false, error: 'Video appears to be empty or corrupted.' };
+    }
+    return { valid: true };
+  }
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
   if (!allowedTypes.includes(mimeType.toLowerCase())) {
-    return { valid: false, error: 'Please upload a JPEG, PNG, or WebP image.' };
+    return { valid: false, error: 'Please upload a JPEG, PNG, or WebP image — or an MP4/WebM video.' };
   }
   if (sizeBytes > 5 * 1024 * 1024) {
     return { valid: false, error: 'Image must be under 5MB. Please compress or resize the photo.' };

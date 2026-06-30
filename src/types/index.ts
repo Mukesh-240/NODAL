@@ -208,8 +208,12 @@ export interface CivicUser {
 
 // ── API Request/Response types ────────────────────────────────────────────────
 export interface AnalyzeRequest {
-  imageBase64: string;
+  imageBase64: string;       // image OR video base64 (mimeType disambiguates)
   mimeType: string;
+  // For video uploads: a client-extracted still frame (JPEG base64). Persisted +
+  // displayed in place of the video, and used as the analysis fallback if Gemini
+  // video understanding fails.
+  frameBase64?: string;
   gpsLat: number;
   gpsLng: number;
   citizenEmail?: string;
@@ -252,6 +256,13 @@ export interface AgentReasoning {
   dispatchModel: 'human-in-the-loop';
 }
 
+// A civic-critical facility found near the issue (Tool 1.5 — Places proximity).
+export interface ProximityPlace {
+  name: string;
+  type: string;       // hospital | school | bus_station | police | fire_station
+  distanceM: number;
+}
+
 export interface AnalyzeResponse {
   success: boolean;
   trackingCode: string;
@@ -262,6 +273,11 @@ export interface AnalyzeResponse {
   chain: DispatchChain;
   agentReasoning: AgentReasoning;
   legalReasoning: LegalReasoningResult;  // AI per-act reasoning for the review panel
+  // Tool 1.5 — nearby civic-critical facilities + the severity after the proximity
+  // boost. proximityContext is [] when Places is unavailable; adjustedSeverity then
+  // equals analysis.severity.
+  proximityContext: ProximityPlace[];
+  adjustedSeverity: number;
   pointsEarned: number;
   error?: string;
 }

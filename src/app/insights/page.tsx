@@ -66,6 +66,9 @@ interface ConfidenceData {
 function InsightsContent() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [confidenceData, setConfidenceData] = useState<ConfidenceData[]>([]);
+  // Unresolved HIGH-accessibility (severity >= 7) count — drives the RPWD alert.
+  // The dashboard API only returns aggregates, so this comes from /api/issues.
+  const [highAccessibilityIssues, setHighAccessibilityIssues] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -83,6 +86,17 @@ function InsightsContent() {
           heatmapData: result.heatmapData,
           trendData: result.trendData,
         });
+
+        // Count unresolved high-severity issues for the RPWD banner (best-effort).
+        fetch('/api/issues')
+          .then((r) => r.json())
+          .then((d) => {
+            const issues: { severity: number; status: string }[] = d.issues ?? d.data ?? [];
+            setHighAccessibilityIssues(
+              issues.filter((i) => i.severity >= 7 && i.status !== 'resolved').length
+            );
+          })
+          .catch(() => { /* banner just stays hidden */ });
 
         // Build confidence data by category
         const confidenceByCategory = result.categories.map((cat: any) => ({
@@ -136,6 +150,7 @@ function InsightsContent() {
   const displayCategories = data.categories.slice(0, 5).map((cat) => ({
     name: CATEGORY_LABELS[cat.name as keyof typeof CATEGORY_LABELS] || cat.name,
     value: cat.count,
+    severity: cat.severity,
   }));
   const maxIssueCount = Math.max(1, ...displayCategories.map((d) => d.value));
 
@@ -164,6 +179,27 @@ function InsightsContent() {
       </header>
 
       <main className="max-w-container-max mx-auto p-gutter">
+        {/* RPWD Accessibility Alert — shows when unresolved high-severity issues exist */}
+        {highAccessibilityIssues > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-red-600 text-sm font-bold">!</span>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-red-900">
+                  {highAccessibilityIssues} RPWD Act Violation{highAccessibilityIssues > 1 ? 's' : ''} — Immediate Action Required
+                </p>
+                <p className="text-xs text-red-700 mt-0.5 leading-relaxed">
+                  {highAccessibilityIssues} unresolved issue{highAccessibilityIssues > 1 ? 's' : ''} with HIGH accessibility
+                  impact — in direct violation of RPWD Act 2016 §40 &amp; §45.
+                  These obstruct safe access for persons with disabilities.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Stats summary */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-md mb-xl">
           {[
@@ -218,6 +254,11 @@ function InsightsContent() {
                         <span className="text-sm font-medium text-gray-950">
                           {item.name}
                         </span>
+                        {item.severity >= 7 && (
+                          <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-full">
+                            RPWD
+                          </span>
+                        )}
                       </div>
                       <span className="text-sm font-bold text-gray-950 tabular-nums">
                         {item.value}
