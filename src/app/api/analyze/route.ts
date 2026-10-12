@@ -247,7 +247,9 @@ export async function POST(request: NextRequest) {
 
   // Human-readable NODAL Tracking Ref — generated before pattern detection &
   // drafting so the documents cite it and we can exclude it from the pattern query.
-  const trackingCode = generateTrackingCode(route.city);
+  // Carries the category, zone, severity band and date so the code itself is
+  // self-describing (see generateTrackingCode for the field layout).
+  const trackingCode = generateTrackingCode(route.city, analysis.category, analysis.severity);
 
   // ════════════════════════════════════════════════════════════════════════════
   // TOOL 6: detect_pattern — systemic-cluster detection (read-only Supabase)
@@ -343,6 +345,11 @@ export async function POST(request: NextRequest) {
   // ════════════════════════════════════════════════════════════════════════════
   // TOOL 4: log_to_database — Supabase PostgreSQL
   // ════════════════════════════════════════════════════════════════════════════
+  // Set once the row is committed. If insertIssue had to re-roll the code to
+  // dodge a UNIQUE collision, this is the code that actually persisted — and it
+  // is what the citizen must be told, so email + response read from it, not from
+  // `trackingCode` (which may be the discarded first attempt).
+  let finalTrackingCode: string | undefined;
   try {
     logTool('log_to_database', 'start');
     const t4 = Date.now();
@@ -354,39 +361,52 @@ export async function POST(request: NextRequest) {
     const storeMime = isVideo && frameBase64 ? 'image/jpeg' : mimeType;
     const imageUrl = await uploadIssueImage(storeBase64, storeMime, issueId);
 
-    // Insert the full issue record
-    await insertIssue({
-      id: issueId,
-      tracking_code: trackingCode,
-      image_url: imageUrl,
-      severity: analysis.severity,
-      category: analysis.category,
-      description: analysis.description,
-      rpwd_violation: analysis.rpwdViolation,
-      violation_section: analysis.violationSection,
-      confidence: analysis.confidence,
-      latitude: gpsLat,
-      longitude: gpsLng,
-      city: route.city,
-      ward: route.ward,
-      department: route.department.name,
-      dept_email: route.department.email,
-      dispatch_text: dispatch.emailNotice,
-      // rti_text / rpwd_grievance_text intentionally not written — the live
-      // issues table lacks those columns. The full text is still emailed.
-      status: 'open',
-      reporter_session: reporterSession,
-      // Citizen contact for the Day 7/15/30 escalation reminders + the notice
-      // signature — name + email now come from the client-side Google Sign-In.
-      citizen_email: citizenEmail ?? null,
-      citizen_name: citizenName ?? null,
-      // Agent transparency — what the agent decided + why (CHANGE 6).
-      agent_reasoning: agentReasoning,
-      pattern_detected: patternResult.patternDetected,
-      repeat_count: patternResult.repeatCount,
-      confidence_score: analysis.confidence,
-      analysis_retried: false, // retry intentionally disabled (cost) — see agentReasoning.lowConfidence
-    });
+    // Insert the full issue record. If the tracking code collides with an
+    // existing row, re-roll only the code and retry — the AI analysis is reused
+    // unchanged. `trackingCode` (the variable) keeps the original value so the
+    // documents drafted above and the response we return stay consistent with
+    // what actually landed in the database, which insertIssue reports back.
+    const inserted = await insertIssue(
+      {
+        id: issueId,
+        tracking_code: trackingCode,
+        image_url: imageUrl,
+        severity: analysis.severity,
+        category: analysis.category,
+        description: analysis.description,
+        rpwd_violation: analysis.rpwdViolation,
+        violation_section: analysis.violationSection,
+        confidence: analysis.confidence,
+        latitude: gpsLat,
+        longitude: gpsLng,
+        city: route.city,
+        ward: route.ward,
+        department: route.department.name,
+        dept_email: route.department.email,
+        dispatch_text: dispatch.emailNotice,
+        // rti_text / rpwd_grievance_text intentionally not written — the live
+        // issues table lacks those columns. The full text is still emailed.
+        status: 'open',
+        reporter_session: reporterSession,
+        // Citizen contact for the Day 7/15/30 escalation reminders + the notice
+        // signature — name + email now come from the client-side Google Sign-In.
+        citizen_email: citizenEmail ?? null,
+        citizen_name: citizenName ?? null,
+        // Agent transparency — what the agent decided + why (CHANGE 6).
+        agent_reasoning: agentReasoning,
+        pattern_detected: patternResult.patternDetected,
+        repeat_count: patternResult.repeatCount,
+        confidence_score: analysis.confidence,
+        analysis_retried: false, // retry intentionally disabled (cost) — see agentReasoning.lowConfidence
+      },
+      // Fresh code per attempt: same category/zone/severity/date, new random tail.
+      () => generateTrackingCode(route.city, analysis.category, analysis.severity),
+    );
+
+    // Adopt the code that was actually stored. A collision re-roll means the
+    // persisted code can differ from the one drafted into the documents above,
+    // so everything the citizen sees must read from here, not from `trackingCode`.
+    finalTrackingCode = inserted.tracking_code;
 
     // Update civic user points (+50 per report)
     await upsertCivicUser(reporterSession, route.city);
@@ -419,7 +439,7 @@ export async function POST(request: NextRequest) {
       try {
         await sendConfirmationEmail({
           to: citizenEmail,
-          trackingCode: trackingCode!,
+          trackingCode: finalTrackingCode!,
           issueId,
           analysis,
           route,
@@ -447,7 +467,7 @@ export async function POST(request: NextRequest) {
 
   const response: AnalyzeResponse = {
     success: true,
-    trackingCode: trackingCode!,
+    trackingCode: finalTrackingCode ?? trackingCode!,
     issueId,
     analysis,
     route,

@@ -265,19 +265,126 @@ export async function routeIssue(
 }
 
 // ── Generate Tracking Code ────────────────────────────────────────────────────
-// Format: NDL-MH-0427-XXXX, NDL-LH-0427-XXXX, NDL-ACAD-0427-XXXX
-export function generateTrackingCode(zone: SupportedCity): string {
-  const zoneCode: Record<SupportedCity, string> = {
-    "Men's Hostels (MH)": 'MH',
-    "Ladies Hostels (LH)": 'LH',
-    'Academic Blocks': 'ACAD',
-    'Campus Grounds': 'CAMP',
-  };
+// Every filed problem gets ONE unique code with a fixed, readable meaning:
+//
+//     NDL-WIFI-MH-B-0427-K7QP-X9
+//      │    │   │  │   │    │     └─ checksum (guards against mis-hearing a code)
+//      │    │   │  │   │    └─────── random unique tail
+//      │    │   │  │   └──────────── MMDD (date filed)
+//      │    │   │  └──────────────── severity band: A=1-3, B=4-6, C=7-10
+//      │    │   └─────────────────── zone: MH / LH / ACAD / CAMP
+//      │    └─────────────────────── category: WIFI / SANI / ELEC / …
+//      └──────────────────────────── NODAL
+//
+// Read aloud it tells a warden everything they need: what, where, how urgent,
+// when. Legacy 5-part codes (NDL-MH-0427-K7QP) remain valid — this only ADDS
+// fields, so already-sent emails, RTI letters and resolve links keep working.
+
+// Compact, unambiguous category tokens. Deliberately short so the full code
+// still fits on one line of an email footer.
+const CATEGORY_CODE: Record<IssueCategory, string> = {
+  hostel_maintenance: 'HOST',
+  classroom_lab: 'CLASS',
+  electrical_ac: 'ELEC',
+  sanitation_washroom: 'SANI',
+  wifi_it_infra: 'WIFI',
+  mess_canteen: 'MESS',
+  campus_safety_roads: 'SAFE',
+  other: 'MISC',
+};
+
+const ZONE_CODE: Record<SupportedCity, string> = {
+  "Men's Hostels (MH)": 'MH',
+  "Ladies Hostels (LH)": 'LH',
+  'Academic Blocks': 'ACAD',
+  'Campus Grounds': 'CAMP',
+};
+
+// Crockford-style alphabet: no I, O, 0 or 1 so a code read over the phone
+// cannot be transcribed wrongly.
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+// Severity 1-10 collapses to three bands. A = cosmetic, B = disruptive,
+// C = safety/hazard. Gives the code an at-a-glance urgency signal.
+export function severityBand(severity: number): 'A' | 'B' | 'C' {
+  if (severity >= 7) return 'C';
+  if (severity >= 4) return 'B';
+  return 'A';
+}
+
+// Random tail from a cryptographically strong source where available. This is
+// the only entropy in the code, and the code doubles as the resolve capability
+// token (see /api/resolve), so Math.random() is not good enough.
+function randomTail(length: number): string {
+  let out = '';
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    for (let i = 0; i < length; i++) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+    return out;
+  }
+  for (let i = 0; i < length; i++) out += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return out;
+}
+
+// Two-char checksum over the code body. Catches the realistic failure mode:
+// someone reading the code aloud or typing it from a printed letter.
+function checksum(body: string): string {
+  let sum = 0;
+  for (let i = 0; i < body.length; i++) sum = (sum * 31 + body.charCodeAt(i)) % 1024;
+  return CODE_ALPHABET[Math.floor(sum / 32) % CODE_ALPHABET.length] + CODE_ALPHABET[sum % CODE_ALPHABET.length];
+}
+
+export function generateTrackingCode(zone: SupportedCity, category?: IssueCategory, severity?: number): string {
   const now = new Date();
   const mmdd = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let suffix = '';
-  for (let i = 0; i < 4; i++) suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
-  const prefix = zoneCode[zone] || 'VIT';
-  return `NDL-${prefix}-${mmdd}-${suffix}`;
+  const zonePart = ZONE_CODE[zone] || 'CAMP';
+
+  // Legacy shape when the caller has no category/severity yet — keeps the
+  // function safe to call from anywhere it was called before.
+  if (!category || typeof severity !== 'number') {
+    const body = `${zonePart}-${mmdd}-${randomTail(4)}`;
+    return `NDL-${body}-${checksum(body)}`;
+  }
+
+  const body = `${CATEGORY_CODE[category] || 'MISC'}-${zonePart}-${severityBand(severity)}-${mmdd}-${randomTail(4)}`;
+  return `NDL-${body}-${checksum(body)}`;
+}
+
+// ── Validate / parse a tracking code ─────────────────────────────────────────
+// Verifies the trailing checksum and, when the code carries the extended shape,
+// decodes what it means. Used by the track page to give a clear error instead of
+// a silent "not found" when a citizen mistypes a code.
+const CODE_SHAPE = /^NDL-([A-Z]{3,5})-([A-Z]{2,4})(?:-([ABC]))?-(\d{4})-(?:([A-Z2-9]{4}))-([A-Z2-9]{2})$/;
+
+export interface DecodedTrackingCode {
+  category?: string;
+  zone: string;
+  severityBand?: 'A' | 'B' | 'C';
+  filedOn: string;
+  checksumValid: boolean;
+}
+
+export function decodeTrackingCode(code: string): DecodedTrackingCode | null {
+  const match = CODE_SHAPE.exec((code || '').trim().toUpperCase());
+  if (!match) return null;
+
+  const [, partA, partB, band, mmdd, , sum] = match;
+  const zoneKeys = Object.keys(ZONE_CODE) as SupportedCity[];
+  const zoneFromB = zoneKeys.find((k) => ZONE_CODE[k] === partB);
+
+  // Extended shape has a severity band; legacy shape reuses the third slot for
+  // the random tail instead, so only treat partA as a category when a band exists.
+  const isExtended = Boolean(band);
+  const body = isExtended
+    ? `${partA}-${partB}-${band}-${mmdd}-${match[5]}`
+    : `${partB}-${mmdd}-${match[5]}`;
+
+  return {
+    category: isExtended ? partA : undefined,
+    zone: zoneFromB || partB,
+    severityBand: (band as 'A' | 'B' | 'C') || undefined,
+    filedOn: `${mmdd.slice(0, 2)}/${mmdd.slice(2)}`,
+    checksumValid: checksum(body) === sum,
+  };
 }

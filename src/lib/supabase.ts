@@ -21,15 +21,54 @@ export const supabaseAdmin = supabaseServiceKey
 
 // ── Database Helpers ──────────────────────────────────────────────────────────
 
-export async function insertIssue(issue: Omit<Issue, 'created_at' | 'resolved_at'>): Promise<Issue> {
-  const { data, error } = await supabaseAdmin
-    .from('issues')
-    .insert(issue)
-    .select()
-    .single();
+// Postgres unique_violation. Raised when two reports land on the same
+// tracking_code (same category+zone+severity+date and a colliding random tail).
+const PG_UNIQUE_VIOLATION = '23505';
 
-  if (error) throw new Error(`Failed to insert issue: ${error.message}`);
-  return data as Issue;
+// True when the error came from the UNIQUE constraint on `tracking_code`.
+// A violation on any OTHER unique column (e.g. the primary key) must not be
+// retried with a fresh tracking code — that would mask a real bug.
+function isTrackingCodeCollision(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code !== PG_UNIQUE_VIOLATION) return false;
+  return /tracking_code/i.test(error.message ?? '');
+}
+
+// Insert a new issue, regenerating the tracking code on a collision rather than
+// failing the whole report. Without this, a duplicate code meant a student's
+// photo + analysis were silently lost at the last step. The caller passes a
+// `makeTrackingCode` factory so each attempt produces a fresh code but every
+// other field (the expensive AI output) is reused unchanged.
+export async function insertIssue(
+  issue: Omit<Issue, 'created_at' | 'resolved_at'>,
+  makeTrackingCode?: () => string,
+  maxAttempts = 5,
+): Promise<Issue> {
+  let payload = issue;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const { data, error } = await supabaseAdmin
+      .from('issues')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (!error) return data as Issue;
+
+    // Only a tracking_code clash is retryable, and only if we can re-roll it.
+    if (!makeTrackingCode || !isTrackingCodeCollision(error) || attempt === maxAttempts) {
+      throw new Error(`Failed to insert issue: ${error.message}`);
+    }
+
+    const next = makeTrackingCode();
+    console.warn(
+      `[insertIssue] tracking_code ${payload.tracking_code} collided (attempt ${attempt}/${maxAttempts}); retrying with ${next}`,
+    );
+    payload = { ...payload, tracking_code: next };
+  }
+
+  // Unreachable: the loop either returns or throws on the final attempt.
+  throw new Error('Failed to insert issue: exhausted tracking code attempts');
 }
 
 export async function getIssues(filters?: { city?: SupportedCity; status?: string }): Promise<Issue[]> {
