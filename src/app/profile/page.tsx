@@ -50,7 +50,7 @@ function ProfileContent() {
       .finally(() => setLoading(false));
   }, []);
 
-  const name = data?.displayName || 'Civic Citizen';
+  const name = data?.displayName || 'Campus Reporter';
   const initial = name.charAt(0).toUpperCase();
 
   return (
@@ -59,7 +59,7 @@ function ProfileContent() {
         <Link href="/" className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
           <span className="material-symbols-outlined">arrow_back</span>
         </Link>
-        <h1 className="font-headline-md text-[18px] text-primary">Civic Profile</h1>
+        <h1 className="font-headline-md text-[18px] text-primary">Campus Profile</h1>
         <span className="w-10 h-10" aria-hidden />
       </header>
 
@@ -116,7 +116,7 @@ function ProfileContent() {
               <Stat label="Reports filed" value={data.reports} />
               <Stat label="Notices dispatched" value={data.dispatched} />
               <Stat label="Issues resolved" value={data.resolved} />
-              <Stat label="Civic score" value={data.score} />
+              <Stat label="Campus score" value={data.score} />
             </section>
 
             {/* Report history */}

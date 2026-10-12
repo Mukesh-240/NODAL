@@ -286,15 +286,6 @@ export interface AnalyzeResponse {
   error?: string;
 }
 
-export interface DashboardStats {
-  totalIssues: number;
-  resolvedThisWeek: number;
-  rpwdViolations: number;
-  avgResolutionDays: number;
-  byCategory: Record<IssueCategory, number>;
-  byCity: Record<SupportedCity, number>;
-}
-
 // ── UI State ──────────────────────────────────────────────────────────────────
 export type ProcessingStep =
   | 'idle'
@@ -333,8 +324,8 @@ export function getSeverityLevel(severity: number): keyof typeof SEVERITY_COLORS
 export function getBadge(points: number): CivicBadge {
   if (points >= 2000) return 'Campus Legend';
   if (points >= 1000) return 'Campus Guardian';
-  if (points >= 500)  return 'Campus Sentinel';
-  if (points >= 100)  return 'Campus Watch';
+  if (points >= 500) return 'Campus Sentinel';
+  if (points >= 100) return 'Campus Watch';
   return 'Campus Citizen';
 }
 

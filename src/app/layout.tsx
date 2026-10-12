@@ -31,8 +31,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NODAL — Civic Infrastructure Audit",
-  description: "Report civic issues with a photo. NODAL classifies, routes, and dispatches formal notices to the right department.",
+  title: "NODAL — Campus Maintenance Reporting",
+  description: "Report campus maintenance issues with a photo. NODAL classifies, routes, and dispatches formal requisitions to the right department.",
 };
 
 export default function RootLayout({

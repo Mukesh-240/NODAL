@@ -3,20 +3,20 @@ import { LegalPage, LegalSection } from '@/components/LegalPage';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy — NODAL',
-  description: 'How NODAL collects, uses, and protects the data you share when reporting a civic issue.',
+  description: 'How NODAL collects, uses, and protects the data you share when reporting a campus maintenance issue.',
 };
 
 export default function PrivacyPage() {
   return (
     <LegalPage
       title="Privacy Policy"
-      intro="NODAL is a civic-reporting tool. We collect the minimum needed to route your report to the right department — and nothing more."
+      intro="NODAL is a campus maintenance reporting tool. We collect the minimum needed to route your report to the right department — and nothing more."
       updated="28 June 2026"
     >
       <LegalSection heading="What we collect">
         <ul>
-          <li><strong>Photo of the issue</strong> — the image you capture, used only to classify and document the civic problem.</li>
-          <li><strong>Location</strong> — GPS coordinates (or the city/ward you select manually) so the report reaches the correct municipal department.</li>
+          <li><strong>Photo of the issue</strong> — the image you capture, used only to classify and document the campus problem.</li>
+          <li><strong>Location</strong> — GPS coordinates (or the zone/block you select manually) so the report reaches the correct campus department.</li>
           <li><strong>Email address (optional)</strong> — only if you provide one, so we can send you a confirmation and tracking link.</li>
           <li><strong>An anonymous session ID</strong> — a random identifier stored in your browser to group your reports and power your leaderboard rank. It is not linked to your identity.</li>
         </ul>
@@ -39,7 +39,7 @@ export default function PrivacyPage() {
       </LegalSection>
 
       <LegalSection heading="Retention & your rights">
-        <p>Reports are retained to maintain the public civic record. You can request deletion of your data at any time — see our <a href="/data-deletion">Data Deletion</a> page.</p>
+        <p>Reports are retained to maintain the public campus maintenance record. You can request deletion of your data at any time — see our <a href="/data-deletion">Data Deletion</a> page.</p>
       </LegalSection>
 
       <LegalSection heading="Contact">

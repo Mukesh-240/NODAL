@@ -469,7 +469,7 @@ function ReportContent() {
           )}
         </div>
         <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
-          Snap a civic issue. We classify it, route it to the right department, and prepare the formal notice.
+          Snap a campus issue. We classify it, route it to the right department, and prepare the formal requisition.
         </p>
       </header>
 
@@ -723,7 +723,7 @@ function ReportContent() {
             <div className="bg-surface hairline-all rounded-xl p-lg">
               <p className="font-headline-md text-[16px] text-primary">Filing your report</p>
               <p className="font-body-md text-[13px] text-on-surface-variant mb-lg">
-                Our 5-agent civic pipeline is on it — this usually takes ~15 seconds.
+                Our 5-agent campus pipeline is on it — this usually takes ~15 seconds.
               </p>
               <div className="flex flex-col gap-md">
                 {STAGES.map((s, i) => {
@@ -852,7 +852,7 @@ function ReportContent() {
                 <div className="bg-surface-container-lowest hairline-all rounded-lg p-md">
                   <p className="font-body-md text-[13px] text-primary leading-relaxed">
                     This issue falls under{' '}
-                    <strong>Ward {result.route.ward}</strong> →{' '}
+                    <strong>Block {result.route.ward}</strong> →{' '}
                     <strong>{CITY_CORPORATION[result.route.city]}</strong> →{' '}
                     <strong>{result.route.department.name}</strong>.
                   </p>
@@ -876,9 +876,9 @@ function ReportContent() {
 
               {/* Why this officer was assigned — derived from the routing response. */}
               {(() => {
-                const ward = result.route.ward || 'your area';
-                const city = result.route.city || 'your city';
-                const department = result.route.department?.name || 'the municipal corporation';
+                const ward = result.route.ward || 'your block';
+                const city = result.route.city || 'your zone';
+                const department = result.route.department?.name || 'the campus maintenance cell';
                 const DOMAIN: Record<string, string> = {
                   damaged_road: 'Roads', broken_footpath: 'Roads', waterlogging: 'Drainage',
                   damaged_streetlight: 'Lighting', waste_dumping: 'Sanitation',
@@ -886,11 +886,11 @@ function ReportContent() {
                 };
                 const domain = DOMAIN[result.analysis.category] ?? 'General';
                 const priority = getPriority(result.adjustedSeverity ?? result.analysis.severity);
-                const officerRank = priority === 'High' ? 'Commissioner' : priority === 'Medium' ? 'Zonal Officer' : 'Ward Officer';
+                const officerRank = priority === 'High' ? 'Dean / Estates Head' : priority === 'Medium' ? 'Block Warden' : 'Maintenance In-charge';
                 const lines = [
-                  `Ward boundary matched (Ward ${ward}, ${city})`,
+                  `Block matched (Block ${ward}, ${city})`,
                   `Department jurisdiction: ${department} (${domain})`,
-                  'State PWD / Corporation zone confirmed',
+                  'Campus zone confirmed',
                   `Severity level requires ${officerRank} or above`,
                 ];
                 return (
@@ -918,7 +918,7 @@ function ReportContent() {
             </div>
 
             <p className="animate-fade-up delay-300 font-body-md text-[14px] text-on-surface-variant bg-surface-container rounded-full py-sm mt-md">
-              🏆 You earned {result.pointsEarned} civic points
+              🏆 You earned {result.pointsEarned} campus points
             </p>
 
             {/* Agent reasoning — transparency: what the agent decided + why. NODAL
@@ -938,7 +938,7 @@ function ReportContent() {
                 <Row label="Ward pattern">
                   <span className="text-right">
                     {result.agentReasoning.patternDetected
-                      ? `${result.agentReasoning.repeatCount} prior reports — escalated to Commissioner`
+                      ? `${result.agentReasoning.repeatCount} prior reports — escalated to Dean / Estates Head`
                       : 'None detected'}
                   </span>
                 </Row>
@@ -978,7 +978,7 @@ function ReportContent() {
             </div>
 
             {/* Location context + priority explainer (Tool 1.5 — Places proximity).
-                Only added when nearby civic-critical facilities were found. */}
+                Only added when nearby campus-critical facilities were found. */}
             {(() => {
               const sev = result.adjustedSeverity ?? result.analysis.severity;
               const level = getSeverityLevel(sev); // critical | high | medium | low

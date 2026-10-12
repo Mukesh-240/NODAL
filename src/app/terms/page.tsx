@@ -3,7 +3,7 @@ import { LegalPage, LegalSection } from '@/components/LegalPage';
 
 export const metadata: Metadata = {
   title: 'Terms of Service — NODAL',
-  description: 'The terms under which you may use NODAL to report civic issues.',
+  description: 'The terms under which you may use NODAL to report campus maintenance issues.',
 };
 
 export default function TermsPage() {

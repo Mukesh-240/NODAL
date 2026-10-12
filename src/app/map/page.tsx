@@ -57,7 +57,7 @@ export default function PublicMapPage() {
           <a href="/" className="text-xs text-gray-400 hover:text-gray-950">← NODAL</a>
         </div>
         <p className="text-sm text-gray-500">
-          {issues.length} civic issues reported across India
+          {issues.length} campus issues reported across campus
         </p>
 
         {/* Filter pills */}
@@ -110,7 +110,7 @@ export default function PublicMapPage() {
             { label: 'Total', value: issues.length },
             { label: 'Critical', value: issues.filter((i) => i.severity >= 8).length },
             { label: 'Resolved', value: issues.filter((i) => i.status === 'resolved').length },
-            { label: 'Cities', value: [...new Set(issues.map((i) => i.city))].length },
+            { label: 'Zones', value: [...new Set(issues.map((i) => i.city))].length },
           ].map((s) => (
             <div key={s.label} className="text-center">
               <p className="text-lg font-bold text-gray-950">{s.value}</p>

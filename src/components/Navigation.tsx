@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 // icon + label in the muted variant color.
 const TABS = [
   { href: '/', label: 'Home', icon: 'home' },
-  { href: '/insights', label: 'Dashboard', icon: 'dashboard' },
+  { href: '/map', label: 'Campus Map', icon: 'map' },
   { href: '/community', label: 'Community', icon: 'groups' },
   { href: '/leaderboard', label: 'Leaderboard', icon: 'leaderboard' },
   { href: '/profile', label: 'Profile', icon: 'person' },

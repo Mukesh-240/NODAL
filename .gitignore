@@ -23,3 +23,6 @@ dev-server.log
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
+.env*

@@ -51,7 +51,7 @@ const nextConfig: NextConfig = {
     root: __dirname,
   },
   experimental: {
-    // Tree-shake recharts so the dashboard only ships the chart pieces it uses.
+    // Tree-shake recharts so the leaderboard only ships the chart pieces it uses.
     optimizePackageImports: ['recharts'],
   },
   async headers() {

@@ -5,7 +5,7 @@
 //   Supabase JS — MIT License — https://github.com/supabase/supabase-js
 
 import { createClient } from '@supabase/supabase-js';
-import { Issue, CivicUser, DashboardStats, IssueCategory, IssueStatus, SupportedCity, getBadge } from '@/types';
+import { Issue, CivicUser, IssueCategory, IssueStatus, SupportedCity, getBadge } from '@/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -183,114 +183,6 @@ export async function getIssueById(id: string): Promise<Issue | null> {
 
   if (error) return null;
   return data as Issue;
-}
-
-export async function getDashboardStats(city?: SupportedCity): Promise<DashboardStats> {
-  // Only the columns the aggregation reads — avoids transferring dispatch_text,
-  // description, image_url, department for every row in a full-table scan.
-  let query = supabase.from('issues').select('status, resolved_at, rpwd_violation, created_at, category, city');
-  if (city) query = query.eq('city', city);
-
-  const { data: issues, error } = await query;
-  if (error) throw new Error(`Dashboard stats error: ${error.message}`);
-
-  const all = (issues as Issue[]) || [];
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  const resolvedThisWeek = all.filter(
-    i => i.status === 'resolved' && i.resolved_at && i.resolved_at > oneWeekAgo
-  ).length;
-
-  const rpwdViolations = all.filter(i => i.rpwd_violation).length;
-
-  const resolved = all.filter(i => i.status === 'resolved' && i.resolved_at);
-  const avgResolutionDays = resolved.length > 0
-    ? Math.round(
-        resolved.reduce((sum, i) => {
-          const days = (new Date(i.resolved_at!).getTime() - new Date(i.created_at).getTime()) / (1000 * 60 * 60 * 24);
-          return sum + days;
-        }, 0) / resolved.length
-      )
-    : 0;
-
-  const byCategory = all.reduce((acc, i) => {
-    acc[i.category] = (acc[i.category] || 0) + 1;
-    return acc;
-  }, {} as Record<IssueCategory, number>);
-
-  const byCity = all.reduce((acc, i) => {
-    acc[i.city] = (acc[i.city] || 0) + 1;
-    return acc;
-  }, {} as Record<SupportedCity, number>);
-
-  return {
-    totalIssues: all.length,
-    resolvedThisWeek,
-    rpwdViolations,
-    avgResolutionDays,
-    byCategory,
-    byCity,
-  };
-}
-
-export async function getDashboardData(city?: SupportedCity) {
-  // Only the columns used for the heatmap, stats and category breakdown below.
-  let query = supabase.from('issues').select('latitude, longitude, severity, status, resolved_at, created_at, category');
-  if (city) query = query.eq('city', city);
-
-  const { data: issues, error } = await query;
-  if (error) throw new Error(`Dashboard data error: ${error.message}`);
-
-  const all = (issues as Issue[]) || [];
-  
-  const heatmapData = all.map(issue => [
-    issue.latitude,
-    issue.longitude,
-    (issue.severity || 5) / 10
-  ]);
-
-  const resolved = all.filter(i => i.status === 'resolved');
-  // Only rows with a real resolved_at can be timed — otherwise new Date(null)
-  // is epoch 1970 and the average goes wildly negative.
-  const timed = resolved.filter(i => i.resolved_at);
-  const avgResolutionDays = timed.length > 0
-    ? Math.round(
-        timed.reduce((sum, i) => {
-          const days = (new Date(i.resolved_at!).getTime() - new Date(i.created_at).getTime()) / (1000 * 60 * 60 * 24);
-          return sum + days;
-        }, 0) / timed.length
-      )
-    : 0;
-
-  const categoriesMap = all.reduce((acc, i) => {
-    if (!acc[i.category]) acc[i.category] = { count: 0, severitySum: 0 };
-    acc[i.category].count += 1;
-    acc[i.category].severitySum += i.severity || 5;
-    return acc;
-  }, {} as Record<string, { count: number, severitySum: number }>);
-
-  const categories = Object.entries(categoriesMap).map(([name, data]) => ({
-    name,
-    count: data.count,
-    severity: Number((data.severitySum / data.count).toFixed(1))
-  })).sort((a, b) => b.count - a.count);
-
-  const stats = {
-    totalIssues: all.length,
-    resolved: resolved.length,
-    avgResolutionDays,
-    rpwdViolations: all.filter(i => i.rpwd_violation).length
-  };
-
-  // Mock trend data for demo
-  const trendData = [
-    { week: 1, actual: 45, forecast: 45 },
-    { week: 2, actual: 52, forecast: 58 },
-    { week: 3, actual: 50, forecast: 62 },
-    { week: 4, actual: 61, forecast: 65 }
-  ];
-
-  return { stats, categories, heatmapData, trendData };
 }
 
 // ── Civic User / Points ───────────────────────────────────────────────────────
