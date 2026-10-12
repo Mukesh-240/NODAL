@@ -44,6 +44,12 @@ const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
   compress: true,
   poweredByHeader: false,
+  // Pin the workspace root to this project. A stray lockfile in a parent
+  // directory (C:\Users\Mukesh) otherwise makes Turbopack infer the wrong
+  // root and fail to resolve Next.js's own built-in modules.
+  turbopack: {
+    root: __dirname,
+  },
   experimental: {
     // Tree-shake recharts so the dashboard only ships the chart pieces it uses.
     optimizePackageImports: ['recharts'],
