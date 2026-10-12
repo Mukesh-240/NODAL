@@ -43,8 +43,8 @@ const AnalyzeRequestSchema = z.object({
     .optional(),
   citizenName: z.string().max(120, 'Name too long').optional(),
   reporterSession: z.string().uuid('Invalid session ID'),
-  // Citizen-confirmed routing (item 3) — optional overrides for city/ward.
-  cityOverride: z.enum(['Chennai', 'Bengaluru', 'Mumbai', 'Delhi']).optional(),
+  // Student-confirmed routing — optional overrides for campus zone / block.
+  cityOverride: z.enum(["Men's Hostels (MH)", "Ladies Hostels (LH)", "Academic Blocks", "Campus Grounds"]).optional(),
   wardOverride: z.string().max(120).optional(),
 });
 

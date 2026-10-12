@@ -96,23 +96,23 @@ function ImpactContent() {
         {/* Global stats */}
         <section className="animate-fade-up mb-lg bg-surface hairline-all rounded-xl p-lg">
           <div className="flex justify-between items-center py-3 hairline-b">
-            <span className="font-body-md text-[14px] text-on-surface-variant">Active Cities</span>
-            <span className="font-headline-md text-[14px] text-primary">4 (Chennai, Bengaluru, Mumbai, Delhi)</span>
+            <span className="font-body-md text-[14px] text-on-surface-variant">Campus Zones</span>
+            <span className="font-headline-md text-[14px] text-primary">4 (Academic, Hostels, Labs, Grounds)</span>
           </div>
           <div className="flex justify-between items-center py-3 hairline-b">
-            <span className="font-body-md text-[14px] text-on-surface-variant">Avg Resolution</span>
-            <span className="font-headline-md text-[14px] text-primary">14 days</span>
+            <span className="font-body-md text-[14px] text-on-surface-variant">Avg Resolution Target</span>
+            <span className="font-headline-md text-[14px] text-primary">2–3 business days</span>
           </div>
           <div className="flex justify-between items-center pt-3">
-            <span className="font-body-md text-[14px] text-on-surface-variant">Government Depts</span>
-            <span className="font-headline-md text-[14px] text-primary">24+ agencies</span>
+            <span className="font-body-md text-[14px] text-on-surface-variant">College Departments</span>
+            <span className="font-headline-md text-[14px] text-primary">8 maintenance cells</span>
           </div>
         </section>
 
         {/* CTA */}
         <section className="animate-fade-up bg-surface-container rounded-xl p-lg text-center">
-          <h3 className="font-headline-md text-[18px] text-primary mb-2">You&apos;re helping shape the city</h3>
-          <p className="font-body-md text-[13px] text-on-surface-variant mb-lg">Keep reporting issues to maximize community impact</p>
+          <h3 className="font-headline-md text-[18px] text-primary mb-2">You&apos;re improving your campus</h3>
+          <p className="font-body-md text-[13px] text-on-surface-variant mb-lg">Keep reporting defects to maintain a safer and better college environment</p>
           <Link
             href="/"
             className="inline-flex h-12 items-center justify-center px-lg rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"

@@ -97,10 +97,10 @@ function LeaderboardContent() {
   }, [scope, load, loadWardHealth]);
 
   const TABS: { key: Tab; label: string; disabled: boolean }[] = [
-    { key: 'ward', label: 'My Ward', disabled: !(myWard && myCity) },
-    { key: 'city', label: 'My City', disabled: !myCity },
-    { key: 'all', label: 'All', disabled: false },
-    { key: 'health', label: 'Ward Health', disabled: false },
+    { key: 'ward', label: 'My Block', disabled: !(myWard && myCity) },
+    { key: 'city', label: 'My Zone', disabled: !myCity },
+    { key: 'all', label: 'Campus-wide', disabled: false },
+    { key: 'health', label: 'Block Health', disabled: false },
   ];
 
   return (
@@ -108,10 +108,10 @@ function LeaderboardContent() {
       <header className="max-w-[560px] mx-auto mb-md">
         <h1 className="font-headline-lg text-headline-lg text-primary tracking-tighter flex items-center gap-2">
           <span className="material-symbols-outlined">leaderboard</span>
-          Civic Leaderboard
+          Campus Leaderboard
         </h1>
         <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
-          {scope === 'health' ? 'Government accountability index' : `Top reporters${scopeLabel ? ` · ${scopeLabel}` : ''}`}
+          {scope === 'health' ? 'Campus resolution & facility health index' : `Top student contributors${scopeLabel ? ` · ${scopeLabel}` : ''}`}
         </p>
       </header>
 
@@ -137,7 +137,7 @@ function LeaderboardContent() {
       <main className="max-w-[560px] mx-auto">
         {!myWard && scope !== 'health' && (
           <p className="text-center text-[12px] text-on-surface-variant font-body-md mb-md">
-            File a report to unlock your ward & city rankings.
+            File a report to unlock your block & zone rankings.
           </p>
         )}
 
@@ -154,15 +154,15 @@ function LeaderboardContent() {
           </div>
         )}
 
-        {/* Ward Health — government accountability index */}
+        {/* Block Health — campus accountability index */}
         {!loading && !error && scope === 'health' && (
           <div className="space-y-3">
             <p className="text-xs text-gray-400 leading-relaxed">
-              Government accountability index — based on issue resolution rate per ward.
+              Campus resolution index — based on maintenance resolution rate per block.
             </p>
             {wardData.length === 0 ? (
               <div className="text-center py-12 text-on-surface-variant font-body-md">
-                No ward data yet.
+                No block health data yet.
               </div>
             ) : (
               wardData.map((ward, i) => (

@@ -3,10 +3,12 @@
 Paste this into a new session to continue without losing context.
 
 ## What NODAL is
-A Next.js 16 civic-tech app for a hackathon (Vibe2Ship 2026). A citizen photographs a civic
-issue → Gemini classifies severity/category → app routes it to the exact government department
-→ drafts formal notices (complaint + RTI + RPWD) → saves to Supabase → emails the dispatch →
-citizen tracks status by code. 4 cities: Chennai, Bengaluru, Mumbai, Delhi.
+A Next.js 16 campus facilities & maintenance action system for colleges. A student photographs
+a campus defect (hostels, labs, classrooms, washrooms, electrical, Wi-Fi, mess) → Gemini classifies
+severity/category → app routes it to the exact college maintenance department → drafts formal
+requisition notices (maintenance notice + administrative enquiry + accessibility grievance) →
+saves to Supabase → student tracks status by tracking reference.
+Campus zones: Academic Block, Hostel Zone, Labs & Workshop, Campus Grounds.
 
 ## Repo / environment
 - Working dir: `c:\Users\Mukesh\OneDrive\personal\Projects\NODAL` — **the actual app is in the `nodal/` subfolder**.

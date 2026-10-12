@@ -3,18 +3,18 @@
 
 // ── Issue Categories ──────────────────────────────────────────────────────────
 export type IssueCategory =
-  | 'damaged_road'
-  | 'broken_footpath'
-  | 'waterlogging'
-  | 'damaged_streetlight'
-  | 'waste_dumping'
-  | 'broken_ramp_accessibility'
-  | 'dangerous_excavation'
+  | 'hostel_maintenance'
+  | 'classroom_lab'
+  | 'electrical_ac'
+  | 'sanitation_washroom'
+  | 'wifi_it_infra'
+  | 'mess_canteen'
+  | 'campus_safety_roads'
   | 'other';
 
 // DB enum is open|in_progress|resolved; the honest lifecycle relabels them:
-// open = Reported, in_progress = Notice Sent (citizen opened Gmail to send),
-// resolved = Resolved (citizen-confirmed). No migration — labels live in STATUS_META.
+// open = Reported, in_progress = Notice Sent (student opened Gmail to send),
+// resolved = Resolved (student-confirmed). No migration — labels live in STATUS_META.
 export type IssueStatus = 'open' | 'in_progress' | 'resolved';
 
 export const STATUS_META: Record<IssueStatus, { label: string; color: string }> = {
@@ -38,23 +38,27 @@ export const PRIORITY_COLORS: Record<Priority, string> = {
   Low: '#43A047',
 };
 
-// Middle tier shown in the transparent routing display (Ward → Corporation → Dept).
+// Zone administration shown in the transparent routing display (Block → Zone Admin → Dept).
 export const CITY_CORPORATION: Record<SupportedCity, string> = {
-  Chennai: 'Greater Chennai Corporation',
-  Bengaluru: 'BBMP',
-  Mumbai: 'BMC (MCGM)',
-  Delhi: 'MCD',
+  "Men's Hostels (MH)": 'Chief Warden Office (MH) & Student Welfare',
+  "Ladies Hostels (LH)": 'Chief Warden Office (LH) & Student Welfare',
+  'Academic Blocks': 'Dean Academic & Estates Directorate',
+  'Campus Grounds': 'Estates Office & Campus Administration',
 };
 
 export type CivicBadge =
-  | 'Civic Newcomer'
-  | 'Neighborhood Watch'
-  | 'Civic Sentinel'
-  | 'City Guardian'
-  | 'City Legend';
+  | 'Campus Citizen'
+  | 'Campus Watch'
+  | 'Campus Sentinel'
+  | 'Campus Guardian'
+  | 'Campus Legend';
 
-// ── Cities & Departments ──────────────────────────────────────────────────────
-export type SupportedCity = 'Chennai' | 'Bengaluru' | 'Mumbai' | 'Delhi';
+// ── VIT-AP Campus Zones ───────────────────────────────────────────────────────
+export type SupportedCity =
+  | "Men's Hostels (MH)"
+  | "Ladies Hostels (LH)"
+  | 'Academic Blocks'
+  | 'Campus Grounds';
 
 export interface DepartmentInfo {
   name: string;
@@ -327,11 +331,11 @@ export function getSeverityLevel(severity: number): keyof typeof SEVERITY_COLORS
 }
 
 export function getBadge(points: number): CivicBadge {
-  if (points >= 2000) return 'City Legend';
-  if (points >= 1000) return 'City Guardian';
-  if (points >= 500)  return 'Civic Sentinel';
-  if (points >= 100)  return 'Neighborhood Watch';
-  return 'Civic Newcomer';
+  if (points >= 2000) return 'Campus Legend';
+  if (points >= 1000) return 'Campus Guardian';
+  if (points >= 500)  return 'Campus Sentinel';
+  if (points >= 100)  return 'Campus Watch';
+  return 'Campus Citizen';
 }
 
 // Honest "days open" label from real timestamps (no fake data). Resolved issues
@@ -348,12 +352,12 @@ export function formatIssueDuration(createdAt: string, resolvedAt?: string | nul
 }
 
 export const CATEGORY_LABELS: Record<IssueCategory, string> = {
-  damaged_road: 'Damaged Road',
-  broken_footpath: 'Broken Footpath',
-  waterlogging: 'Waterlogging',
-  damaged_streetlight: 'Damaged Streetlight',
-  waste_dumping: 'Waste Dumping',
-  broken_ramp_accessibility: 'Broken Accessibility Ramp',
-  dangerous_excavation: 'Dangerous Excavation',
-  other: 'Other',
+  hostel_maintenance: 'Hostel Maintenance',
+  classroom_lab: 'Classrooms & Labs',
+  electrical_ac: 'Electrical & AC',
+  sanitation_washroom: 'Sanitation & Washrooms',
+  wifi_it_infra: 'Wi-Fi & IT Infrastructure',
+  mess_canteen: 'Mess & Canteen',
+  campus_safety_roads: 'Campus Roads & Safety',
+  other: 'Other Campus Issue',
 };

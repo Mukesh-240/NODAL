@@ -14,19 +14,19 @@ export default function TermsPage() {
       updated="28 June 2026"
     >
       <LegalSection heading="What NODAL does">
-        <p>NODAL helps you document a civic issue, classifies it with AI, routes it to the appropriate municipal department, and drafts formal notices (complaint, RTI, and accessibility grievance). NODAL prepares the notice and a prefilled compose; <strong>you</strong> send it from your own email account. NODAL does not dispatch notices to the government on your behalf — the only email it sends is an optional confirmation copy to you.</p>
+        <p>NODAL helps students and campus residents document facility maintenance issues, classifies them with AI, routes them to the appropriate college department, and drafts formal maintenance requisitions. NODAL prepares the notice and a prefilled compose; <strong>you</strong> send it from your own email account. NODAL does not dispatch notices automatically on your behalf — the only email it sends is an optional confirmation copy to you.</p>
       </LegalSection>
 
       <LegalSection heading="Your responsibilities">
         <ul>
-          <li>Submit only <strong>genuine, accurate</strong> reports of real civic issues.</li>
+          <li>Submit only <strong>genuine, accurate</strong> reports of real campus maintenance issues.</li>
           <li>Do not upload photos that are unlawful, defamatory, or that infringe others&apos; privacy or rights.</li>
-          <li>Do not misuse the platform to harass individuals or file false complaints.</li>
+          <li>Do not misuse the platform to file false complaints.</li>
         </ul>
       </LegalSection>
 
-      <LegalSection heading="No guarantee of government action">
-        <p>NODAL is an independent civic tool, not a government service. We draft and help you dispatch notices, but we cannot guarantee that any authority will respond or resolve your issue. Statuses such as &quot;Notice Sent&quot; reflect your action, not confirmed delivery or resolution.</p>
+      <LegalSection heading="No guarantee of institutional action">
+        <p>NODAL is an independent student utility tool. We draft and help you dispatch requisitions, but cannot guarantee the resolution timeline of college maintenance cells. Statuses such as &quot;Notice Sent&quot; reflect your action, not confirmed repair completion.</p>
       </LegalSection>
 
       <LegalSection heading="AI-generated content">

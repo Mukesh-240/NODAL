@@ -19,30 +19,47 @@ import { detectCityFromGPS, cityCenter } from '@/lib/routingMatrix';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useAuth, GoogleButton } from '@/lib/auth';
 
-const CITIES: SupportedCity[] = ['Chennai', 'Bengaluru', 'Mumbai', 'Delhi'];
+const CITIES: SupportedCity[] = [
+  "Men's Hostels (MH)",
+  "Ladies Hostels (LH)",
+  'Academic Blocks',
+  'Campus Grounds',
+];
 
-// Ward/area options per city for the manual location picker. A GPS-detected ward
-// not in this list is preserved as an extra option (see the select below).
+// Block / wing options per campus zone for the manual location picker.
 const WARD_LIST: Record<string, string[]> = {
-  Chennai: [
-    'Anna Nagar', 'Adyar', 'Tambaram', 'Velachery', 'Mylapore',
-    'Royapuram', 'Tondiarpet', 'Perambur', 'Kodambakkam', 'Guindy',
-    'Sholinganallur', 'Perungudi', 'Villivakkam', 'Madhavaram', 'Manali',
+  "Men's Hostels (MH)": [
+    'MH-01',
+    'MH-02',
+    'MH-03',
+    'MH-04',
+    'MH-05',
+    'MH-06',
+    'MH-07',
+    'MH Dining Hall & Mess',
   ],
-  Bengaluru: [
-    'Koramangala', 'Indiranagar', 'Whitefield', 'Jayanagar', 'Malleshwaram',
-    'Rajajinagar', 'Hebbal', 'Yeshwanthpur', 'Electronic City', 'Bannerghatta',
-    'HSR Layout', 'BTM Layout', 'JP Nagar', 'Basavanagudi', 'Shivajinagar',
+  "Ladies Hostels (LH)": [
+    'LH-01',
+    'LH-02',
+    'LH-03',
+    'LH-04 / 4A',
+    'LH Dining Hall & Mess',
   ],
-  Mumbai: [
-    'Bandra West', 'Andheri East', 'Andheri West', 'Borivali', 'Kandivali',
-    'Malad', 'Goregaon', 'Powai', 'Kurla', 'Dharavi',
-    'Worli', 'Lower Parel', 'Dadar', 'Sion', 'Chembur',
+  'Academic Blocks': [
+    'Academic Block 1 (AB-1)',
+    'Academic Block 2 (AB-2)',
+    'Central Block (CB)',
+    'Newton Hall & Lecture Theatres',
+    'Central Library & Reading Halls',
+    'Computing & SDC Labs',
   ],
-  Delhi: [
-    'Connaught Place', 'Karol Bagh', 'Lajpat Nagar', 'Rohini', 'Dwarka',
-    'Janakpuri', 'Pitampura', 'Saket', 'Vasant Kunj', 'Mayur Vihar',
-    'Shahdara', 'Preet Vihar', 'Paschim Vihar', 'Uttam Nagar', 'Najafgarh',
+  'Campus Grounds': [
+    'Main Gate & Security Plaza',
+    'Sports Complex & Oval Ground',
+    'Rock Plaza & Activity Center',
+    'Food Court & Canteen',
+    'Campus Internal Roads & Pathways',
+    'Health Center & Infirmary',
   ],
 };
 
@@ -531,9 +548,9 @@ function ReportContent() {
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">How it works</p>
               <div className="space-y-4">
                 {[
-                  { n: '01', title: 'Snap a photo', desc: 'Capture the issue — pothole, broken footpath, flooding, a blocked ramp.' },
-                  { n: '02', title: 'AI classifies & routes', desc: 'Gemini scores severity and finds the exact department responsible.' },
-                  { n: '03', title: 'You send the notice', desc: 'A formal notice citing RPWD Act + RTI Act is drafted. You review and send.' },
+                  { n: '01', title: 'Snap a photo', desc: 'Capture the defect — hostel leak, broken bench, lab equipment, AC failure, washroom hygiene.' },
+                  { n: '02', title: 'AI classifies & routes', desc: 'Gemini scores severity and routes to the exact college maintenance cell.' },
+                  { n: '03', title: 'You send the requisition', desc: 'A formal campus maintenance requisition is drafted. You review and send.' },
                 ].map((step) => (
                   <div key={step.n} className="flex gap-4">
                     <span className="text-xs font-bold text-gray-300 w-6 flex-shrink-0 mt-0.5">{step.n}</span>
@@ -548,9 +565,17 @@ function ReportContent() {
 
             {/* What NODAL handles */}
             <section className="mt-8">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">What NODAL handles</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Campus Issues Handled</p>
               <div className="flex flex-wrap gap-2">
-                {['Damaged roads', 'Broken footpaths', 'Waterlogging', 'Streetlights', 'Waste dumping', 'Accessibility / RPWD', 'Dangerous excavation'].map((c) => (
+                {[
+                  'Hostel Maintenance',
+                  'Classrooms & Labs',
+                  'Electrical & AC',
+                  'Sanitation & Washrooms',
+                  'Wi-Fi & IT Infra',
+                  'Mess & Canteen',
+                  'Campus Roads & Safety',
+                ].map((c) => (
                   <span key={c} className="bg-gray-100 text-gray-700 rounded-full px-3 py-1.5 text-sm font-medium">
                     {c}
                   </span>
@@ -560,12 +585,12 @@ function ReportContent() {
 
             {/* Coverage */}
             <section className="mt-8">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Where we operate</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Campus Zones</p>
               <div className="grid grid-cols-2 gap-2">
-                {CITIES.map((city) => (
-                  <div key={city} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-                    <p className="text-sm font-semibold text-gray-950">{city}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{CITY_CORPORATION[city]}</p>
+                {CITIES.map((zone) => (
+                  <div key={zone} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                    <p className="text-sm font-semibold text-gray-950">{zone}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{CITY_CORPORATION[zone]}</p>
                   </div>
                 ))}
               </div>
@@ -636,35 +661,35 @@ function ReportContent() {
               </div>
               <p className="font-body-md text-[13px] text-on-surface-variant mb-md">
                 {loc.gpsOk
-                  ? 'We detected this from your GPS. Correct it if the city or ward is wrong — it decides which department gets the notice.'
-                  : 'We couldn’t read your GPS. Select your city and ward below — this decides which department gets the notice.'}
+                  ? 'We detected this from your GPS. Correct the campus zone or block if needed — this decides which college department receives the requisition.'
+                  : 'Select your campus zone and block below — this decides which college department receives the requisition.'}
               </p>
 
               {loc.gpsOk && (
                 <>
-                  <p className="font-label-caps text-label-caps uppercase text-on-surface-variant">Detected address</p>
+                  <p className="font-label-caps text-label-caps uppercase text-on-surface-variant">Detected location</p>
                   <p className="font-body-md text-[14px] text-primary mb-md">{loc.address}</p>
                 </>
               )}
 
-              <label className="font-label-caps text-label-caps uppercase text-on-surface-variant">City</label>
+              <label className="font-label-caps text-label-caps uppercase text-on-surface-variant">Campus Zone</label>
               <select
                 value={loc.city}
                 onChange={(e) => setLoc({ ...loc, city: e.target.value as SupportedCity })}
                 className="w-full h-12 px-md rounded-xl bg-surface-container-lowest hairline-all text-primary font-body-md mb-md mt-1 focus:outline-none focus:border-primary transition-colors"
               >
-                <option value="" disabled>Select city</option>
+                <option value="" disabled>Select campus zone</option>
                 {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
 
-              <label className="font-label-caps text-label-caps uppercase text-on-surface-variant">Ward / Area</label>
+              <label className="font-label-caps text-label-caps uppercase text-on-surface-variant">Block / Wing / Room</label>
               <select
                 value={loc.ward}
                 onChange={(e) => setLoc({ ...loc, ward: e.target.value })}
                 disabled={!loc.city}
                 className="w-full h-12 px-md rounded-xl bg-surface-container-lowest hairline-all text-primary font-body-md mb-lg mt-1 focus:outline-none focus:border-primary transition-colors disabled:opacity-40"
               >
-                <option value="">Select ward / area</option>
+                <option value="">Select block / wing</option>
                 {loc.ward && !(WARD_LIST[loc.city] ?? []).includes(loc.ward) && (
                   <option value={loc.ward}>{loc.ward}</option>
                 )}

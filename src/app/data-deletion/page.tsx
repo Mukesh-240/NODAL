@@ -35,7 +35,7 @@ export default function DataDeletionPage() {
       </LegalSection>
 
       <LegalSection heading="Timeline">
-        <p>We process deletion requests within <strong>30 days</strong>. Note that reports already dispatched to a government department by you, via your own email, are outside NODAL&apos;s control and cannot be recalled by us.</p>
+        <p>We process deletion requests within <strong>30 days</strong>. Note that requisitions already dispatched to a college department by you, via your own email, are outside NODAL&apos;s control and cannot be recalled by us.</p>
       </LegalSection>
     </LegalPage>
   );

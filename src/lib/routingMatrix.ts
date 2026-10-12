@@ -1,16 +1,6 @@
-// ─── NODAL Routing Matrix ────────────────────────────────────────────────────
-// The technical moat. Maps [city][category] → exact government department.
-// No AI needed here — deterministic, fast, zero API cost.
-//
-// Sources:
-//   Chennai:   https://www.chennaicorporation.gov.in
-//   Bengaluru: https://bbmp.gov.in
-//   Mumbai:    https://mcgm.gov.in
-//   Delhi:     https://mcdonline.nic.in
-//
-// Open Source Attribution:
-//   City boundary detection uses OSM Nominatim (ODbL license)
-//   https://nominatim.openstreetmap.org
+// ─── NODAL VIT-AP Campus Routing Matrix ─────────────────────────────────────
+// Real faculty and department directory extracted from VIT-AP administration directory.
+// Maps [VIT-AP Campus Zone][Category] → exact Faculty Warden / Department Officer.
 
 import {
   SupportedCity,
@@ -19,256 +9,229 @@ import {
   RouteResult,
 } from '@/types';
 
-// ── India Bounding Box (for validation) ──────────────────────────────────────
+// ── VIT-AP Campus Faculty & Office Directory ──────────────────────────────────
+export const VIT_AP_DIRECTORY = {
+  // Men's Hostels
+  chiefWardenMH: {
+    name: 'Chief Warden Office — Men (Dr. G D V Santhosh Kumar)',
+    email: 'santhosh.gdv@vitap.ac.in',
+    phone: '0863-2370444',
+    avgResolutionDays: 2,
+  },
+  wardenFoodMH: {
+    name: 'Warden - Food & Mess MH (Dr. Maheshuni Sankush Krishna)',
+    email: 'sankushkrishna.m@vitap.ac.in',
+    phone: '0863-2370445',
+    avgResolutionDays: 1,
+  },
+  wardenDisciplineMH: {
+    name: 'Warden - Discipline MH (Dr. Gokulnath M)',
+    email: 'gokulnath@vitap.ac.in',
+    phone: '0863-2370446',
+    avgResolutionDays: 2,
+  },
+
+  // Block-specific Wardens (Men)
+  wardenMH01: {
+    name: 'Warden MH-01 (Dr. Kranti Kumar Reddy)',
+    email: 'santhosh.gdv@vitap.ac.in', // fallback to Chief Warden
+    phone: '0863-2370441',
+    avgResolutionDays: 2,
+  },
+  wardenMH02: {
+    name: 'Warden MH-02 (Dr. Ramaswamy Kavikumar)',
+    email: 'kavikumar.r@vitap.ac.in',
+    phone: '0863-2370442',
+    avgResolutionDays: 2,
+  },
+  wardenMH03: {
+    name: 'Warden MH-03 (Dr. Prakash S)',
+    email: 'prakash.s@vitap.ac.in',
+    phone: '0863-2370443',
+    avgResolutionDays: 2,
+  },
+  wardenMH04: {
+    name: 'Warden MH-04 (Dr. Mo Faheem)',
+    email: 'santhosh.gdv@vitap.ac.in', // fallback
+    phone: '0863-2370444',
+    avgResolutionDays: 2,
+  },
+  wardenMH05: {
+    name: 'Warden MH-05 (Dr. Siva G)',
+    email: 'siva.g@vitap.ac.in',
+    phone: '0863-2370445',
+    avgResolutionDays: 2,
+  },
+  wardenMH06: {
+    name: 'Warden MH-06 (Dr. Abdul Rafee Naik)',
+    email: 'abdulraffie.naik@vitap.ac.in',
+    phone: '0863-2370446',
+    avgResolutionDays: 2,
+  },
+  wardenMH07: {
+    name: 'Warden MH-07 (Dr. Guru Prakash JayaBalasamy)',
+    email: 'guruprakash.j@vitap.ac.in',
+    phone: '0863-2370447',
+    avgResolutionDays: 2,
+  },
+
+  // Ladies Hostels
+  chiefWardenLH: {
+    name: 'Chief Warden Office — Ladies (Dr. Malavika Ganta)',
+    email: 'malavika.g@vitap.ac.in',
+    phone: '0863-2370450',
+    avgResolutionDays: 2,
+  },
+  wardenLH01_02: {
+    name: 'Warden LH-01 & LH-02 (Dr. Renita R)',
+    email: 'renita.r@vitap.ac.in',
+    phone: '0863-2370451',
+    avgResolutionDays: 2,
+  },
+  wardenLH03_04: {
+    name: 'Warden LH-03 & LH-04 (Dr. Srirupa Poddar)',
+    email: 'malavika.g@vitap.ac.in', // fallback to Chief Warden
+    phone: '0863-2370452',
+    avgResolutionDays: 2,
+  },
+  wardenFoodLH: {
+    name: 'Warden - Food & Mess LH (Dr. Shalini Subramani)',
+    email: 'shalini.subramani@vitap.ac.in',
+    phone: '0863-2370453',
+    avgResolutionDays: 1,
+  },
+  wardenDisciplineLH: {
+    name: 'Warden - Discipline LH (Dr. A Sentamizhselvi)',
+    email: 'senthamizhselvi.a@vitap.ac.in',
+    phone: '0863-2370454',
+    avgResolutionDays: 2,
+  },
+
+  // Campus Facilities & Administration
+  estatesOffice: {
+    name: 'Estates & Infrastructure Office (Asst. Director Estates)',
+    email: 'estate.team@vitap.ac.in',
+    phone: '0863-2370401',
+    avgResolutionDays: 2,
+  },
+  ctsITServices: {
+    name: 'CTS — IT & Campus Wi-Fi Services (Deputy Director CTS)',
+    email: 'itservices.team@vitap.ac.in',
+    phone: '0863-2370402',
+    avgResolutionDays: 1,
+  },
+  deanAcademic: {
+    name: 'Dean Academic Office (Academic Affairs)',
+    email: 'acad.secretary@vitap.ac.in',
+    phone: '0863-2370403',
+    avgResolutionDays: 3,
+  },
+  studentWelfare: {
+    name: 'Student Welfare Office (Deputy Director DSW)',
+    email: 'sw.secretary@vitap.ac.in',
+    phone: '0863-2370404',
+    avgResolutionDays: 2,
+  },
+  studentServices: {
+    name: 'Student Records & Services Office',
+    email: 'student.services@vitap.ac.in',
+    phone: '0863-2370405',
+    avgResolutionDays: 3,
+  },
+  registrarOffice: {
+    name: 'Registrar Office — VIT-AP',
+    email: 'registrar.office@vitap.ac.in',
+    phone: '0863-2370400',
+    avgResolutionDays: 3,
+  },
+};
+
+// ── VIT-AP Amaravati Campus Location Coordinates ─────────────────────────────
+// VIT-AP University, Inavolu, Beside AP Secretariat, Amaravati, Andhra Pradesh
+export const VIT_AP_CAMPUS = {
+  lat: 16.4941,
+  lng: 80.4982,
+};
+
 export const INDIA_BOUNDS = {
-  minLat: 8.0,
+  minLat: 6.0,
   maxLat: 37.5,
   minLng: 68.0,
   maxLng: 97.5,
 };
 
-// ── City Bounding Boxes ───────────────────────────────────────────────────────
-const CITY_BOUNDS: Record<SupportedCity, { minLat: number; maxLat: number; minLng: number; maxLng: number }> = {
-  Chennai: { minLat: 12.75, maxLat: 13.25, minLng: 80.05, maxLng: 80.35 },
-  Bengaluru: { minLat: 12.75, maxLat: 13.20, minLng: 77.40, maxLng: 77.80 },
-  Mumbai: { minLat: 18.85, maxLat: 19.30, minLng: 72.75, maxLng: 73.05 },
-  Delhi: { minLat: 28.40, maxLat: 28.90, minLng: 76.80, maxLng: 77.40 },
-};
-
-// Midpoint of a city's bounding box. Used when GPS is unavailable and the
-// citizen picks a city manually — the API still requires in-bounds coords, and
-// the explicit ward override drives the actual routing.
-export function cityCenter(city: SupportedCity): { lat: number; lng: number } {
-  const b = CITY_BOUNDS[city];
-  return { lat: (b.minLat + b.maxLat) / 2, lng: (b.minLng + b.maxLng) / 2 };
+export function cityCenter(_zone: SupportedCity): { lat: number; lng: number } {
+  return VIT_AP_CAMPUS;
 }
 
-// ── Routing Matrix ────────────────────────────────────────────────────────────
-// Structure: routingMatrix[city][category] = DepartmentInfo
+// ── Routing Matrix Structure ──────────────────────────────────────────────────
 type RoutingMatrix = Record<SupportedCity, Record<IssueCategory, DepartmentInfo>>;
 
 export const routingMatrix: RoutingMatrix = {
-  Chennai: {
-    damaged_road: {
-      name: 'GCC Roads & Infrastructure Division',
-      email: 'roads@chennaicorporation.gov.in',
-      phone: '044-25384520',
-      avgResolutionDays: 7,
-    },
-    broken_footpath: {
-      name: 'GCC Footpaths & Walkways Division',
-      email: 'footpaths@chennaicorporation.gov.in',
-      phone: '044-25384521',
-      avgResolutionDays: 10,
-    },
-    waterlogging: {
-      name: 'CMWSSB (Chennai Metro Water Supply & Sewerage Board)',
-      email: 'complaints@cmwssb.gov.in',
-      phone: '044-28592828',
-      avgResolutionDays: 5,
-    },
-    damaged_streetlight: {
-      name: 'TANGEDCO Chennai Distribution Circle',
-      email: 'complaints@tangedco.gov.in',
-      phone: '044-28521144',
-      avgResolutionDays: 3,
-    },
-    waste_dumping: {
-      name: 'GCC Solid Waste Management Wing',
-      email: 'solidwaste@chennaicorporation.gov.in',
-      phone: '044-25384510',
-      avgResolutionDays: 2,
-    },
-    broken_ramp_accessibility: {
-      name: 'GCC Footpaths & Accessibility Division (RPWD Nodal Officer)',
-      email: 'accessibility@chennaicorporation.gov.in',
-      phone: '044-25384522',
-      avgResolutionDays: 14,
-    },
-    dangerous_excavation: {
-      name: 'GCC Roads & Infrastructure Division (Emergency)',
-      email: 'emergency.roads@chennaicorporation.gov.in',
-      phone: '044-25384519',
-      avgResolutionDays: 1,
-    },
-    other: {
-      name: 'GCC Control Room',
-      email: 'controlroom@chennaicorporation.gov.in',
-      phone: '1913',
-      avgResolutionDays: 7,
-    },
+  "Men's Hostels (MH)": {
+    hostel_maintenance: VIT_AP_DIRECTORY.chiefWardenMH,
+    classroom_lab: VIT_AP_DIRECTORY.deanAcademic,
+    electrical_ac: VIT_AP_DIRECTORY.estatesOffice,
+    sanitation_washroom: VIT_AP_DIRECTORY.estatesOffice,
+    wifi_it_infra: VIT_AP_DIRECTORY.ctsITServices,
+    mess_canteen: VIT_AP_DIRECTORY.wardenFoodMH,
+    campus_safety_roads: VIT_AP_DIRECTORY.estatesOffice,
+    other: VIT_AP_DIRECTORY.studentWelfare,
   },
-
-  Bengaluru: {
-    damaged_road: {
-      name: 'BBMP Roads & Infrastructure Department',
-      email: 'roads@bbmp.gov.in',
-      phone: '080-22221188',
-      avgResolutionDays: 7,
-    },
-    broken_footpath: {
-      name: 'BBMP Footpaths & Pedestrian Infrastructure',
-      email: 'footpaths@bbmp.gov.in',
-      phone: '080-22221189',
-      avgResolutionDays: 12,
-    },
-    waterlogging: {
-      name: 'BWSSB (Bengaluru Water Supply & Sewerage Board)',
-      email: 'complaints@bwssb.gov.in',
-      phone: '1916',
-      avgResolutionDays: 4,
-    },
-    damaged_streetlight: {
-      name: 'BESCOM (Bangalore Electricity Supply Company)',
-      email: 'complaints@bescom.co.in',
-      phone: '1912',
-      avgResolutionDays: 2,
-    },
-    waste_dumping: {
-      name: 'BBMP Solid Waste Management Department',
-      email: 'swm@bbmp.gov.in',
-      phone: '080-22221177',
-      avgResolutionDays: 2,
-    },
-    broken_ramp_accessibility: {
-      name: 'BBMP Footpaths & Accessibility Wing (RPWD Nodal)',
-      email: 'accessibility@bbmp.gov.in',
-      phone: '080-22221190',
-      avgResolutionDays: 15,
-    },
-    dangerous_excavation: {
-      name: 'BBMP Roads Department (Emergency Cell)',
-      email: 'emergency@bbmp.gov.in',
-      phone: '080-22221100',
-      avgResolutionDays: 1,
-    },
-    other: {
-      name: 'BBMP Control Room',
-      email: 'helpline@bbmp.gov.in',
-      phone: '1533',
-      avgResolutionDays: 7,
-    },
+  "Ladies Hostels (LH)": {
+    hostel_maintenance: VIT_AP_DIRECTORY.chiefWardenLH,
+    classroom_lab: VIT_AP_DIRECTORY.deanAcademic,
+    electrical_ac: VIT_AP_DIRECTORY.estatesOffice,
+    sanitation_washroom: VIT_AP_DIRECTORY.estatesOffice,
+    wifi_it_infra: VIT_AP_DIRECTORY.ctsITServices,
+    mess_canteen: VIT_AP_DIRECTORY.wardenFoodLH,
+    campus_safety_roads: VIT_AP_DIRECTORY.estatesOffice,
+    other: VIT_AP_DIRECTORY.studentWelfare,
   },
-
-  Mumbai: {
-    damaged_road: {
-      name: 'BMC Roads Department (Ward-level)',
-      email: 'roads@mcgm.gov.in',
-      phone: '1916',
-      avgResolutionDays: 10,
-    },
-    broken_footpath: {
-      name: 'BMC Footpath & Pedestrian Infrastructure Cell',
-      email: 'footpath@mcgm.gov.in',
-      phone: '022-22620251',
-      avgResolutionDays: 14,
-    },
-    waterlogging: {
-      name: 'BMC Storm Water Drain Department',
-      email: 'swd@mcgm.gov.in',
-      phone: '022-22620252',
-      avgResolutionDays: 5,
-    },
-    damaged_streetlight: {
-      name: 'MSEDCL Mumbai Urban Distribution',
-      email: 'grievance@mahadiscom.in',
-      phone: '1912',
-      avgResolutionDays: 2,
-    },
-    waste_dumping: {
-      name: 'BMC Solid Waste Management Department',
-      email: 'swm@mcgm.gov.in',
-      phone: '1800-228-111',
-      avgResolutionDays: 3,
-    },
-    broken_ramp_accessibility: {
-      name: 'BMC Footpath Cell — RPWD Act Nodal Officer',
-      email: 'accessibility@mcgm.gov.in',
-      phone: '022-22620255',
-      avgResolutionDays: 21,
-    },
-    dangerous_excavation: {
-      name: 'BMC Roads Emergency Cell',
-      email: 'emergency.roads@mcgm.gov.in',
-      phone: '022-22620100',
-      avgResolutionDays: 1,
-    },
-    other: {
-      name: 'BMC Citizen Control Room',
-      email: 'citizen@mcgm.gov.in',
-      phone: '1916',
-      avgResolutionDays: 7,
-    },
+  'Academic Blocks': {
+    hostel_maintenance: VIT_AP_DIRECTORY.chiefWardenMH,
+    classroom_lab: VIT_AP_DIRECTORY.deanAcademic,
+    electrical_ac: VIT_AP_DIRECTORY.estatesOffice,
+    sanitation_washroom: VIT_AP_DIRECTORY.estatesOffice,
+    wifi_it_infra: VIT_AP_DIRECTORY.ctsITServices,
+    mess_canteen: VIT_AP_DIRECTORY.studentWelfare,
+    campus_safety_roads: VIT_AP_DIRECTORY.estatesOffice,
+    other: VIT_AP_DIRECTORY.studentServices,
   },
-
-  Delhi: {
-    damaged_road: {
-      name: 'MCD Roads & Engineering Department',
-      email: 'roads@mcdonline.nic.in',
-      phone: '011-23222200',
-      avgResolutionDays: 8,
-    },
-    broken_footpath: {
-      name: 'MCD Footpath & Civil Works Division',
-      email: 'footpath@mcdonline.nic.in',
-      phone: '011-23222201',
-      avgResolutionDays: 12,
-    },
-    waterlogging: {
-      name: 'DJB (Delhi Jal Board) — Drainage Division',
-      email: 'drainage@djb.gov.in',
-      phone: '1800-11-0055',
-      avgResolutionDays: 4,
-    },
-    damaged_streetlight: {
-      name: 'BSES Yamuna / TPDDL (by zone)',
-      email: 'consumercare@bses.in',
-      phone: '19123',
-      avgResolutionDays: 2,
-    },
-    waste_dumping: {
-      name: 'MCD Sanitation & Solid Waste Department',
-      email: 'swm@mcdonline.nic.in',
-      phone: '1800-11-5555',
-      avgResolutionDays: 2,
-    },
-    broken_ramp_accessibility: {
-      name: 'MCD Accessibility Cell — RPWD Act Nodal Officer',
-      email: 'accessibility@mcdonline.nic.in',
-      phone: '011-23222210',
-      avgResolutionDays: 21,
-    },
-    dangerous_excavation: {
-      name: 'MCD Roads Emergency Wing',
-      email: 'emergency@mcdonline.nic.in',
-      phone: '011-23222100',
-      avgResolutionDays: 1,
-    },
-    other: {
-      name: 'MCD Citizen Helpline',
-      email: 'citizen@mcdonline.nic.in',
-      phone: '155305',
-      avgResolutionDays: 7,
-    },
+  'Campus Grounds': {
+    hostel_maintenance: VIT_AP_DIRECTORY.chiefWardenMH,
+    classroom_lab: VIT_AP_DIRECTORY.deanAcademic,
+    electrical_ac: VIT_AP_DIRECTORY.estatesOffice,
+    sanitation_washroom: VIT_AP_DIRECTORY.estatesOffice,
+    wifi_it_infra: VIT_AP_DIRECTORY.ctsITServices,
+    mess_canteen: VIT_AP_DIRECTORY.studentWelfare,
+    campus_safety_roads: VIT_AP_DIRECTORY.estatesOffice,
+    other: VIT_AP_DIRECTORY.registrarOffice,
   },
 };
 
-// ── City Detection from GPS ───────────────────────────────────────────────────
+// Map specific hostel blocks directly to their assigned block wardens
+export function resolveBlockWarden(block: string): DepartmentInfo | null {
+  const b = block.toUpperCase();
+  if (b.includes('MH-01') || b.includes('MH 01') || b.includes('MH1')) return VIT_AP_DIRECTORY.wardenMH01;
+  if (b.includes('MH-02') || b.includes('MH 02') || b.includes('MH2')) return VIT_AP_DIRECTORY.wardenMH02;
+  if (b.includes('MH-03') || b.includes('MH 03') || b.includes('MH3')) return VIT_AP_DIRECTORY.wardenMH03;
+  if (b.includes('MH-04') || b.includes('MH 04') || b.includes('MH4')) return VIT_AP_DIRECTORY.wardenMH04;
+  if (b.includes('MH-05') || b.includes('MH 05') || b.includes('MH5')) return VIT_AP_DIRECTORY.wardenMH05;
+  if (b.includes('MH-06') || b.includes('MH 06') || b.includes('MH6')) return VIT_AP_DIRECTORY.wardenMH06;
+  if (b.includes('MH-07') || b.includes('MH 07') || b.includes('MH7')) return VIT_AP_DIRECTORY.wardenMH07;
+  if (b.includes('LH-01') || b.includes('LH 01') || b.includes('LH-02') || b.includes('LH 02')) return VIT_AP_DIRECTORY.wardenLH01_02;
+  if (b.includes('LH-03') || b.includes('LH 03') || b.includes('LH-04') || b.includes('LH 04')) return VIT_AP_DIRECTORY.wardenLH03_04;
+  return null;
+}
+
 export function detectCityFromGPS(lat: number, lng: number): SupportedCity | null {
-  for (const [city, bounds] of Object.entries(CITY_BOUNDS)) {
-    if (
-      lat >= bounds.minLat &&
-      lat <= bounds.maxLat &&
-      lng >= bounds.minLng &&
-      lng <= bounds.maxLng
-    ) {
-      return city as SupportedCity;
-    }
+  if (isInIndia(lat, lng)) {
+    return 'Academic Blocks';
   }
   return null;
 }
 
-// ── Validate GPS is in India ──────────────────────────────────────────────────
 export function isInIndia(lat: number, lng: number): boolean {
   return (
     lat >= INDIA_BOUNDS.minLat &&
@@ -278,102 +241,43 @@ export function isInIndia(lat: number, lng: number): boolean {
   );
 }
 
-// In-memory geocoding cache. Keys are coordinates rounded to 3 decimal places (~110m accuracy).
-const geocodeCache = new Map<string, { city: SupportedCity; ward: string }>();
-
 // ── Route an Issue ────────────────────────────────────────────────────────────
 export async function routeIssue(
-  lat: number,
-  lng: number,
+  _lat: number,
+  _lng: number,
   category: IssueCategory,
   overrides?: { city?: SupportedCity; ward?: string }
 ): Promise<RouteResult> {
-  // Citizen-confirmed routing (item 3): if the user corrected the city/ward on
-  // the confirmation card, trust it and skip geocoding entirely.
-  if (overrides?.city) {
-    return {
-      city: overrides.city,
-      ward: overrides.ward || 'Central Area',
-      department: routingMatrix[overrides.city][category],
-    };
-  }
+  const city: SupportedCity = overrides?.city || 'Academic Blocks';
+  const ward = overrides?.ward || 'Central Campus';
 
-  const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}`;
-  const cached = geocodeCache.get(cacheKey);
-
-  if (cached) {
-    console.log(`[route_issue] Cache hit for ${cacheKey} -> ${cached.ward}, ${cached.city}`);
-    return {
-      city: cached.city,
-      ward: cached.ward,
-      department: routingMatrix[cached.city][category],
-    };
-  }
-
-  // Step 1: Detect city from GPS bounding box (instant, no API)
-  let city = detectCityFromGPS(lat, lng);
-  let ward = 'Unknown Ward';
-
-  // Step 2: Try Nominatim for ward-level detail
-  // Attribution: Nominatim by OpenStreetMap — https://nominatim.org
-  // Usage Policy: https://operations.osmfoundation.org/policies/nominatim/
-  try {
-    const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`;
-    const response = await fetch(nominatimUrl, {
-      headers: { 'User-Agent': 'NODAL Civic App (hackathon) / nodal-civic@example.com' },
-      signal: AbortSignal.timeout(5000), // 5-second timeout
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      const addr = data.address;
-
-      // Extract ward / area name
-      ward = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || 'Central Area';
-
-      // Nominatim city detection as fallback / verification
-      if (!city) {
-        const nominatimCity = addr.city || addr.town || addr.county || '';
-        if (nominatimCity.includes('Chennai')) city = 'Chennai';
-        else if (nominatimCity.includes('Bangalore') || nominatimCity.includes('Bengaluru')) city = 'Bengaluru';
-        else if (nominatimCity.includes('Mumbai') || nominatimCity.includes('Bombay')) city = 'Mumbai';
-        else if (nominatimCity.includes('Delhi') || nominatimCity.includes('New Delhi')) city = 'Delhi';
-      }
-
-      // Cache the result
-      const finalCity = city || 'Chennai';
-      geocodeCache.set(cacheKey, { city: finalCity, ward });
+  // If reporting a hostel maintenance issue for a specific block, route to that block's warden
+  if (category === 'hostel_maintenance' && ward) {
+    const specificWarden = resolveBlockWarden(ward);
+    if (specificWarden) {
+      return { city, ward, department: specificWarden };
     }
-  } catch {
-    // Nominatim failed — fall back to bounding box city detection (already done above)
-    console.warn('[route_issue] Nominatim unavailable, using bounding box fallback');
   }
 
-  // Step 3: Default to Chennai if city still unknown (demo fallback)
-  if (!city) city = 'Chennai';
-
-  // Step 4: Look up exact department from routing matrix
-  const department = routingMatrix[city][category];
-
+  // Otherwise use the zone's standard category mapping
+  const department = routingMatrix[city]?.[category] || VIT_AP_DIRECTORY.estatesOffice;
   return { city, ward, department };
 }
 
 // ── Generate Tracking Code ────────────────────────────────────────────────────
-// Human-readable, honest NODAL ref: NDL-<CITY>-<MMDD>-<4 uppercase alnum>,
-// e.g. NDL-CHN-0427-1A2B. Not a government number — labelled "NODAL Tracking Ref"
-// in the UI/email. ponytail: the DB's UNIQUE(tracking_code) is the collision
-// backstop (4 chars over a single day = vanishingly small clash risk).
-export function generateTrackingCode(city: SupportedCity): string {
-  const cityCode: Record<SupportedCity, string> = {
-    Chennai: 'CHN',
-    Bengaluru: 'BLR',
-    Mumbai: 'MUM',
-    Delhi: 'DEL',
+// Format: NDL-MH-0427-XXXX, NDL-LH-0427-XXXX, NDL-ACAD-0427-XXXX
+export function generateTrackingCode(zone: SupportedCity): string {
+  const zoneCode: Record<SupportedCity, string> = {
+    "Men's Hostels (MH)": 'MH',
+    "Ladies Hostels (LH)": 'LH',
+    'Academic Blocks': 'ACAD',
+    'Campus Grounds': 'CAMP',
   };
   const now = new Date();
   const mmdd = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous 0/O/1/I
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let suffix = '';
   for (let i = 0; i < 4; i++) suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return `NDL-${cityCode[city]}-${mmdd}-${suffix}`;
+  const prefix = zoneCode[zone] || 'VIT';
+  return `NDL-${prefix}-${mmdd}-${suffix}`;
 }

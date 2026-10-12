@@ -1,5 +1,5 @@
 // ─── /api/accountability ─────────────────────────────────────────────────────
-// Government accountability index: per-ward resolution rate + letter grade,
+// Campus facility resolution index: per-block resolution rate + letter grade,
 // from the `ward_accountability` view (service-role read).
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';

@@ -3,31 +3,31 @@ import { LegalPage, LegalSection } from '@/components/LegalPage';
 
 export const metadata: Metadata = {
   title: 'About — NODAL',
-  description: 'NODAL turns a photo of a civic problem into a formal, correctly-routed notice to the right government department.',
+  description: 'NODAL turns a photo of a campus facility issue into a formal, correctly-routed requisition to the right college maintenance department.',
 };
 
 export default function AboutPage() {
   return (
     <LegalPage
       title="About NODAL"
-      intro="Photograph a civic issue. NODAL classifies it, finds the exact department, drafts the formal notices, and helps you send them — in under a minute."
+      intro="Photograph a campus maintenance defect. NODAL classifies it, finds the exact college department, drafts the formal requisitions, and helps you dispatch them in seconds."
     >
       <LegalSection heading="Why NODAL exists">
-        <p>Reporting a pothole, a broken footpath, or an inaccessible ramp usually means not knowing <strong>which</strong> department to contact, or how to write a notice they can&apos;t ignore. NODAL closes that gap: it routes your report to the correct ward and department and arms you with legally-grounded notices.</p>
+        <p>Reporting a broken lab apparatus, hostel plumbing failure, classroom AC issue, or Wi-Fi outage on campus usually means not knowing <strong>which</strong> maintenance cell to contact, or having tickets lost in WhatsApp groups. NODAL closes that gap: it routes your report to the correct campus zone and department, drafting formal maintenance requisitions that college authorities can act upon immediately.</p>
       </LegalSection>
 
       <LegalSection heading="How it works">
         <ul>
-          <li><strong>See it</strong> — take a photo of the issue.</li>
-          <li><strong>Classify</strong> — Gemini vision identifies the category and severity.</li>
-          <li><strong>Route</strong> — your location maps to the exact ward officer and department.</li>
-          <li><strong>Draft</strong> — a formal complaint, an RTI application, and (where relevant) an RPWD Act accessibility grievance are written for you.</li>
-          <li><strong>Send</strong> — NODAL prepares the notice and a one-tap Gmail/email compose, and <strong>you</strong> send it from your own account. NODAL does not email the department on your behalf — your name is on a formal notice, so the send is yours. Track status anytime with your reference code.</li>
+          <li><strong>See it</strong> — snap a photo of the defect or breakdown on campus.</li>
+          <li><strong>Classify</strong> — Gemini vision identifies the issue category, severity, and urgency.</li>
+          <li><strong>Route</strong> — maps to the exact campus zone, block supervisor, and maintenance cell.</li>
+          <li><strong>Draft</strong> — a formal maintenance requisition, follow-up inquiry, and accessibility notice are drafted for you.</li>
+          <li><strong>Send</strong> — NODAL prepares the prefilled email and you send it from your student account. Track status anytime with your tracking code.</li>
         </ul>
       </LegalSection>
 
-      <LegalSection heading="Honest by design">
-        <p>NODAL is transparent about where your report goes: it shows you the routed department and the accountability chain before you send anything. By design, <strong>NODAL never auto-sends notices to government addresses</strong> — it prepares everything and you tap to send from your own account, because the notice carries your name and that one tap is your legal ownership of the complaint. The only email NODAL sends is a confirmation copy to you. The tracking reference and statutory citations appear in every notice so authorities — and you — can hold the process accountable, and we never show a status we can&apos;t back up.</p>
+      <LegalSection heading="Accountability by design">
+        <p>NODAL shows you the routed department and escalation chain before you send anything. By design, <strong>NODAL never auto-sends notices to administration addresses</strong> — it prepares everything and you tap to send from your own student email, keeping direct student ownership of the requisition. Every notice carries a unique tracking code so departments and students can monitor resolution times.</p>
       </LegalSection>
 
       <LegalSection heading="Open source & credits">

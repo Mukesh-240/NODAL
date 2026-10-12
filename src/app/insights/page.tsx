@@ -20,11 +20,14 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Per-issue bar colors (keys are the CATEGORY_LABELS display strings).
 const ISSUE_COLORS: Record<string, string> = {
-  'Damaged Road': '#6B7280',
-  'Waste Dumping': '#F59E0B',
-  'Broken Footpath': '#3B82F6',
-  'Waterlogging': '#06B6D4',
-  'Damaged Streetlight': '#10B981',
+  'Hostel Maintenance': '#F59E0B',
+  'Classrooms & Labs': '#3B82F6',
+  'Electrical & AC': '#EF4444',
+  'Sanitation & Washrooms': '#06B6D4',
+  'Wi-Fi & IT Infrastructure': '#8B5CF6',
+  'Mess & Canteen': '#10B981',
+  'Campus Roads & Safety': '#6B7280',
+  'Other Campus Issue': '#9CA3AF',
 };
 
 // Dynamic imports for map (Leaflet requires window)
