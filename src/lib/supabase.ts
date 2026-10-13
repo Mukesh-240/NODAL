@@ -71,7 +71,7 @@ export async function insertIssue(
   throw new Error('Failed to insert issue: exhausted tracking code attempts');
 }
 
-export async function getIssues(filters?: { city?: SupportedCity; status?: string }): Promise<Issue[]> {
+export async function getIssues(filters?: { city?: SupportedCity; status?: string; session?: string }): Promise<Issue[]> {
   // Select only columns needed for map pins and lists, omitting heavy columns like dispatch_text
   let query = supabase
     .from('issues')
@@ -80,6 +80,8 @@ export async function getIssues(filters?: { city?: SupportedCity; status?: strin
 
   if (filters?.city) query = query.eq('city', filters.city);
   if (filters?.status) query = query.eq('status', filters.status);
+  // Session scope: a student sees only their own reports ("My Reports").
+  if (filters?.session) query = query.eq('reporter_session', filters.session);
 
   const { data, error } = await query.limit(500);
   if (error) throw new Error(`Failed to fetch issues: ${error.message}`);

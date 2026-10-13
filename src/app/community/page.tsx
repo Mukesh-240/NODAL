@@ -336,8 +336,13 @@ export default function CommunityPage() {
 
   const handleCommentToggle = (id: string) => setExpandedId((prev) => (prev === id ? null : id));
 
-  const topDuplicate = category !== 'all' && zone !== 'All Zones'
-    ? issues.find((i) => i.status === 'open' && i.upvote_count >= 2)
+  // "Already reported?" nudge — fires whenever the board is narrowed enough to
+  // surface a strong match: a filtered category+zone, or any text search with
+  // open results. Points at the top open issue with traction so a student
+  // upvotes instead of filing a duplicate.
+  const narrowed = (category !== 'all' && zone !== 'All Zones') || search.trim().length >= 2;
+  const topDuplicate = narrowed
+    ? issues.find((i) => i.status === 'open' && i.upvote_count >= 1)
     : null;
   const blockOptions = zone !== 'All Zones' ? (BLOCKS[zone] ?? []) : [];
 
@@ -447,7 +452,7 @@ export default function CommunityPage() {
           <div className="rounded-2xl p-4 flex gap-3 items-start" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
             <span className="material-symbols-outlined" style={{ color: '#f59e0b', fontSize: '20px', flexShrink: 0 }}>info</span>
             <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: '#92400e' }}>Active issue found in this area</p>
+              <p className="text-sm font-semibold" style={{ color: '#92400e' }}>Already reported — add your voice instead</p>
               <p className="text-xs mt-0.5 line-clamp-2" style={{ color: '#b45309' }}>{topDuplicate.description}</p>
               <p className="text-xs mt-1" style={{ color: '#d97706' }}>📍 {topDuplicate.ward} · {topDuplicate.upvote_count} student(s) affected</p>
             </div>

@@ -15,6 +15,7 @@ import {
 } from '@/types';
 import { getSession } from '@/lib/session';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { isTracked, trackIssue, untrackIssue, markSeen, isAdvanced, TrackedStatus } from '@/lib/tracking';
 
 interface TrackedIssue {
   tracking_code: string;
@@ -41,6 +42,9 @@ function TrackContent() {
   const [deleting, setDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [deleteMsg, setDeleteMsg] = useState('');
+  // Notify-me: am I tracking this report, and has it advanced since I saw it?
+  const [tracked, setTracked] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
 
   // Citizen-confirmed resolution (item 6) — only the original reporter can mark
   // this; the server validates the session against the stored reporter_session.
@@ -94,6 +98,19 @@ function TrackContent() {
     }
   }
 
+  function toggleTrack() {
+    if (!issue) return;
+    if (tracked) {
+      untrackIssue(issue.tracking_code);
+      setTracked(false);
+      setAdvanced(false);
+    } else {
+      trackIssue(issue.tracking_code, (issue.status ?? 'open') as TrackedStatus);
+      setTracked(true);
+      setAdvanced(false);
+    }
+  }
+
   async function lookup(rawCode: string) {
     const trimmed = rawCode.trim();
     if (trimmed.length < 3) {
@@ -112,6 +129,17 @@ function TrackContent() {
         setError(data.error || 'No issue found for that code.');
       } else {
         setIssue(data.issue);
+        // Notify-me bookkeeping: if tracked, note whether the live status has
+        // advanced past what was last seen, then record this view as seen.
+        const live = (data.issue.status ?? 'open') as TrackedStatus;
+        if (isTracked(data.issue.tracking_code)) {
+          setTracked(true);
+          setAdvanced(isAdvanced(data.issue.tracking_code, live));
+          markSeen(data.issue.tracking_code, live);
+        } else {
+          setTracked(false);
+          setAdvanced(false);
+        }
       }
     } catch {
       setError('Lookup failed. Please try again.');
@@ -120,9 +148,11 @@ function TrackContent() {
     }
   }
 
-  // Support deep link from confirmation email: /track?code=NDL-CHN-12345
+  // Support deep links: /track?code=NDL-… (confirmation email, My Reports)
+  // and /track?id=<uuid> (community cards). The /api/track lookup accepts
+  // either — getIssueById picks the right column — so pass either through.
   useEffect(() => {
-    const linked = searchParams.get('code');
+    const linked = searchParams.get('code') || searchParams.get('id');
     if (linked) {
       setCode(linked);
       lookup(linked);
@@ -182,6 +212,33 @@ function TrackContent() {
               </div>
               <StatusPill status={issue.status} />
             </div>
+
+            {/* Notify-me: status advanced since the student last looked */}
+            {advanced && (
+              <div className="animate-fade-up bg-emerald-50 border border-emerald-200 rounded-xl px-md py-sm mb-md flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-600" style={{ fontSize: '18px' }}>notifications_active</span>
+                <p className="font-body-md text-[13px] text-emerald-800">
+                  <strong>Status update:</strong> this report moved to “{issue.status.replace('_', ' ')}” since you last checked.
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={toggleTrack}
+              className={"w-full h-11 rounded-full font-headline-md text-[14px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all mb-md " +
+                (tracked
+                  ? 'bg-surface-container text-on-surface-variant hairline-all'
+                  : 'bg-primary text-on-primary')}>
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                {tracked ? 'notifications_off' : 'notifications'}
+              </span>
+              {tracked ? 'Tracking — tap to stop' : 'Notify me of status changes'}
+            </button>
+            {!tracked && (
+              <p className="font-body-md text-[11px] text-on-surface-variant text-center -mt-2 mb-md">
+                We&apos;ll flag updates here when you check back. Nothing leaves your browser.
+              </p>
+            )}
 
             <div className="flex flex-col">
               <Row label="Issue">
