@@ -3,7 +3,6 @@ import Link from "next/link";
 import { Geist, Geist_Mono, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Navigation } from "@/components/Navigation";
-import { AuthProvider } from "@/lib/auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,8 +30,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NODAL — Campus Maintenance Reporting",
-  description: "Report campus maintenance issues with a photo. NODAL classifies, routes, and dispatches formal requisitions to the right department.",
+  title: "NODAL — VIT-AP Campus Maintenance Reporting",
+  description: "Report VIT-AP hostel, lab and campus maintenance issues with a photo. NODAL classifies, routes to the right warden or department, and drafts the formal requisition. No sign-in.",
 };
 
 export default function RootLayout({
@@ -49,7 +48,6 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
       </head>
       <body className="min-h-full flex flex-col pb-24" suppressHydrationWarning>
-        <AuthProvider>
           <div className="flex-1">{children}</div>
         <footer className="px-gutter pb-lg pt-md">
           <nav className="max-w-[680px] mx-auto flex flex-wrap items-center justify-center gap-x-md gap-y-2 text-on-surface-variant font-body-md text-[13px]">
@@ -66,11 +64,10 @@ export default function RootLayout({
             <Link href="/data-deletion" className="hover:text-primary transition-colors">Data Deletion</Link>
           </nav>
           <p className="max-w-[680px] mx-auto text-center text-on-surface-variant font-body-md text-[12px] mt-2">
-            Powered by Gemini 2.5 Flash via Google AI Studio API
+            Powered by Gemini 3.5 Flash via Google AI Studio API
           </p>
         </footer>
           <Navigation />
-        </AuthProvider>
       </body>
     </html>
   );

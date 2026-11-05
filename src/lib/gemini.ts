@@ -1,7 +1,7 @@
 // ─── NODAL Gemini Agent ───────────────────────────────────────────────────────
 // Implements the agentic loop for campus facility analysis and formal requisition drafting.
 //
-// Tool 1: analyze_image    — multimodal vision (Gemini 2.5 Flash)
+// Tool 1: analyze_image    — multimodal vision (Gemini 3.5 Flash)
 // Tool 3: draft_dispatch   — formal campus maintenance requisition & grievance drafting
 //
 // Open Source Attribution:
@@ -9,6 +9,7 @@
 
 import {
   GoogleGenerativeAI,
+  type GenerationConfig,
   type Part,
 } from '@google/generative-ai';
 import {
@@ -22,6 +23,28 @@ import {
 } from '@/types';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+// gemini-2.5-flash is closed to new API keys; 3.5 Flash is the current Flash tier.
+const GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+
+// Flash models return transient 503 "high demand" spikes; fall through the list
+// so one overloaded model doesn't fail the whole report.
+async function generateWithFallback(
+  generationConfig: GenerationConfig,
+  timeout: number,
+  input: string | Array<string | Part>,
+) {
+  let lastErr: unknown;
+  for (const name of GEMINI_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({ model: name, generationConfig }, { timeout });
+      return await model.generateContent(input);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[gemini] ${name} failed, trying next:`, (err as Error)?.message);
+    }
+  }
+  throw lastErr;
+}
 
 // ── Tool 1: analyze_image ─────────────────────────────────────────────────────
 export const VIDEO_MIME_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
@@ -81,19 +104,16 @@ export async function analyzeImage(
   nearbyContext?: string,
 ): Promise<AnalyzeImageOutput> {
   const video = isVideoMime(mimeType);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-    },
-  }, { timeout: video ? 55_000 : 25_000 });
 
   const mediaPart: Part = {
     inlineData: { data: imageBase64, mimeType },
   };
 
-  const result = await model.generateContent([buildAnalyzeImagePrompt(ward, city, nearbyContext, video), mediaPart]);
+  const result = await generateWithFallback(
+    { responseMimeType: 'application/json', temperature: 0.1 },
+    video ? 55_000 : 25_000,
+    [buildAnalyzeImagePrompt(ward, city, nearbyContext, video), mediaPart],
+  );
   const text = result.response.text().trim();
 
   try {
@@ -261,16 +281,11 @@ You must return ONLY a JSON object containing these exact fields:
 
 Keep each document concise (maximum 250 words). Return ONLY the raw JSON object.`;
 
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.2,
-      maxOutputTokens: 3000,
-    },
-  }, { timeout: 25_000 });
-
-  const result = await model.generateContent(prompt);
+  const result = await generateWithFallback(
+    { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 3000 },
+    25_000,
+    prompt,
+  );
   const text = result.response.text().trim();
 
   try {

@@ -135,7 +135,7 @@ function MyReportsContent() {
 
   function copyCode(code: string) {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(code).catch(() => {});
+      navigator.clipboard.writeText(code).catch(() => { });
       setCopied(code);
       setTimeout(() => setCopied(null), 1500);
     }
@@ -202,9 +202,8 @@ function MyReportsContent() {
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`text-xs px-3.5 py-2 rounded-full font-semibold capitalize whitespace-nowrap transition-colors ${
-                    filter === f ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-600'
-                  }`}
+                  className={`text-xs px-3.5 py-2 rounded-full font-semibold capitalize whitespace-nowrap transition-colors ${filter === f ? 'bg-gray-950 text-white' : 'bg-gray-100 text-gray-600'
+                    }`}
                 >
                   {f === 'all' ? `All (${counts.all})` : `${f.replace('_', ' ')} (${counts[f]})`}
                 </button>

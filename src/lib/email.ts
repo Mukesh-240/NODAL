@@ -162,7 +162,7 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
 
         <!-- Footer -->
         <tr><td style="background:#F5F5F5;padding:16px 32px;border-top:1px solid #E0E0E0;">
-          <p style="color:#9E9E9E;font-size:11px;margin:0;">NODAL uses Gemini 2.5 Flash (Google AI Studio) for image analysis and dispatch generation. Map data © OpenStreetMap contributors (ODbL). This is a civic technology platform submitted for Vibe2Ship Hackathon 2026.</p>
+          <p style="color:#9E9E9E;font-size:11px;margin:0;">NODAL uses Gemini 3.5 Flash (Google AI Studio) for image analysis and dispatch generation. Map data © OpenStreetMap contributors (ODbL). This is a civic technology platform submitted for Vibe2Ship Hackathon 2026.</p>
         </td></tr>
 
       </table>

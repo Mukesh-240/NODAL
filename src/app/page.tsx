@@ -17,7 +17,6 @@ import {
 import { getSession } from '@/lib/session';
 import { detectCityFromGPS, cityCenter } from '@/lib/routingMatrix';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { useAuth, GoogleButton } from '@/lib/auth';
 
 const CITIES: SupportedCity[] = [
   "Men's Hostels (MH)",
@@ -169,7 +168,7 @@ function getPosition(): Promise<GeolocationPosition> {
 // ponytail: client Nominatim, no key; honors their public rate limit at demo scale.
 async function reverseGeocode(lat: number, lng: number): Promise<{ address: string; city: SupportedCity | null; ward: string }> {
   // null when GPS lands outside our 4 supported cities — caller drops to the
-  // manual picker rather than silently defaulting to Chennai (a wrong guess).
+  // manual picker rather than silently defaulting to a wrong guess.
   const city = detectCityFromGPS(lat, lng);
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`);
@@ -209,7 +208,6 @@ const STAGES = [
 const STAGE_MS = 1200; // time each stage animates before advancing
 
 function ReportContent() {
-  const { user, signIn } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const videoFileRef = useRef<HTMLInputElement>(null);
   // Mobile gets a camera-forced photo input (capture only fires reliably when the
@@ -219,7 +217,10 @@ function ReportContent() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [previewUrl, setPreviewUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [showSignIn, setShowSignIn] = useState(false);
+  // Optional student identity, kept on this device only (no account). Name + VIT-AP
+  // reg no. let the student sign the requisition; both can be left blank.
+  const [studentName, setStudentName] = useState('');
+  const [regNo, setRegNo] = useState('');
   const [step, setStep] = useState(0);
   const [error, setError] = useState('');
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
@@ -229,31 +230,23 @@ function ReportContent() {
   const [copied, setCopied] = useState(false);
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Filing requires the citizen's real identity (their name goes on a formal legal
-  // notice). Signed out → show the sign-in prompt; once signed in, continue straight
-  // into the camera so the sign-in feels like one uninterrupted step.
   function startReport() {
-    if (!user) { setShowSignIn(true); return; }
     fileRef.current?.click();
   }
 
   // Secondary path (mobile only): pick a video / file from the gallery — uses the
   // no-capture input so the system file picker opens instead of the camera.
   function startVideoReport() {
-    if (!user) { setShowSignIn(true); return; }
     videoFileRef.current?.click();
   }
 
   useEffect(() => {
     setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+    try {
+      setStudentName(localStorage.getItem('nodal_student_name') ?? '');
+      setRegNo(localStorage.getItem('nodal_reg_no') ?? '');
+    } catch { /* ignore storage errors */ }
   }, []);
-
-  useEffect(() => {
-    if (user && showSignIn) {
-      setShowSignIn(false);
-      fileRef.current?.click();
-    }
-  }, [user, showSignIn]);
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -276,8 +269,8 @@ function ReportContent() {
       if (geo.city) {
         setLoc({ lat, lng, address: geo.address, city: geo.city, ward: geo.ward, gpsOk: true });
       } else {
-        // GPS worked but we're outside the supported cities — don't guess Chennai.
-        console.warn('[gps] location outside supported cities — manual pick required');
+        // GPS worked but we're outside India — don't guess a campus zone.
+        console.warn('[gps] location outside supported area — manual pick required');
         setLoc({ lat: 0, lng: 0, address: '', city: '', ward: '', gpsOk: false });
       }
     } catch (err) {
@@ -302,6 +295,12 @@ function ReportContent() {
     // GPS failed → use the chosen city's centre so the API's in-bounds check and
     // stored coords stay consistent with the manual selection (ward override routes).
     const { lat, lng } = loc.gpsOk ? { lat: loc.lat, lng: loc.lng } : cityCenter(loc.city);
+    const name = studentName.trim();
+    const reg = regNo.trim().toUpperCase();
+    try {
+      localStorage.setItem('nodal_student_name', name);
+      localStorage.setItem('nodal_reg_no', reg);
+    } catch { /* ignore storage errors */ }
     setError('');
     setStep(0);
     setPhase('working');
@@ -321,8 +320,7 @@ function ReportContent() {
           frameBase64,
           gpsLat: lat,
           gpsLng: lng,
-          citizenEmail: user?.email || undefined,
-          citizenName: user?.name || undefined,
+          citizenName: name ? (reg ? `${name} (${reg})` : name) : reg || undefined,
           reporterSession: getSession(),
           cityOverride: loc.city,
           wardOverride: loc.ward,
@@ -446,30 +444,12 @@ function ReportContent() {
       <header className="px-gutter pt-xl pb-lg max-w-[560px] mx-auto">
         <div className="flex items-start justify-between gap-md">
           <h1 className="font-display-lg text-[40px] font-bold tracking-tighter text-primary">NODAL</h1>
-          {user ? (
-            <Link href="/profile" aria-label="Your profile" className="shrink-0">
-              {user.picture
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={user.picture} alt="" className="w-7 h-7 rounded-full" referrerPolicy="no-referrer" />
-                : <span className="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center text-[12px] font-bold">{user.name.charAt(0).toUpperCase()}</span>}
-            </Link>
-          ) : (
-            <button
-              onClick={signIn}
-              className="shrink-0 flex items-center gap-2 py-2 px-3 rounded-full border border-gray-200 text-[13px] font-semibold text-gray-950 hover:bg-gray-50 transition-colors"
-            >
-              <svg width="15" height="15" viewBox="0 0 18 18" aria-hidden="true">
-                <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" />
-                <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" />
-                <path fill="#FBBC05" d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z" />
-                <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" />
-              </svg>
-              Sign in
-            </button>
-          )}
+          <span className="shrink-0 mt-2 rounded-full bg-gray-100 px-3 py-1 text-[12px] font-semibold text-gray-700">
+            VIT-AP University
+          </span>
         </div>
         <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
-          Snap a campus issue. We classify it, route it to the right department, and prepare the formal requisition.
+          Snap a VIT-AP campus issue. We classify it, route it to the right warden or department, and prepare the formal requisition. No sign-in needed.
         </p>
       </header>
 
@@ -522,25 +502,6 @@ function ReportContent() {
               >
                 Or choose video/file
               </button>
-            )}
-
-            {/* Sign-in prompt — shown when a signed-out citizen taps Report */}
-            {showSignIn && !user && (
-              <div className="animate-fade-up mt-4 bg-white border border-gray-100 rounded-2xl p-6">
-                <p className="text-base font-bold text-gray-950 mb-1">
-                  Sign in to file a report
-                </p>
-                <p className="text-sm text-gray-500 mb-4 leading-relaxed">
-                  Your name and email are used to prepare the formal notice. NODAL never posts on your behalf.
-                </p>
-                <GoogleButton />
-                <button
-                  onClick={() => setShowSignIn(false)}
-                  className="block mx-auto mt-3 text-xs text-gray-400 hover:text-gray-950 transition-colors underline"
-                >
-                  Not now
-                </button>
-              </div>
             )}
 
             {/* How it works */}
@@ -615,14 +576,24 @@ function ReportContent() {
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={previewUrl} alt="preview" className="w-full rounded-xl mb-md object-cover max-h-96 hairline-all" />
             )}
-            {user && (
-              <div className="flex items-center gap-2 bg-surface hairline-all rounded-full px-md py-sm mb-sm">
-                <span className="material-symbols-outlined text-[18px] text-on-surface-variant">mail</span>
-                <span className="font-body-md text-[13px] text-on-surface-variant truncate">
-                  Filed as <strong className="text-primary">{user.name}</strong> · updates to {user.email}
-                </span>
-              </div>
-            )}
+            <div className="grid grid-cols-2 gap-sm mb-md">
+              <input
+                value={studentName}
+                onChange={(e) => setStudentName(e.target.value)}
+                maxLength={80}
+                autoComplete="name"
+                placeholder="Your name (optional)"
+                className="h-12 px-md rounded-xl bg-surface hairline-all text-primary font-body-md text-[14px] focus:outline-none focus:border-primary"
+              />
+              <input
+                value={regNo}
+                onChange={(e) => setRegNo(e.target.value)}
+                maxLength={20}
+                autoCapitalize="characters"
+                placeholder="Reg no. e.g. 23BCE7001"
+                className="h-12 px-md rounded-xl bg-surface hairline-all text-primary font-body-md text-[14px] uppercase placeholder:normal-case focus:outline-none focus:border-primary"
+              />
+            </div>
             <div className="flex gap-sm">
               <button
                 onClick={reset}
