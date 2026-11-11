@@ -484,7 +484,7 @@ function ReportContent() {
               className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-10 flex flex-col items-center gap-3 hover:border-gray-950 hover:bg-gray-50 transition-all"
             >
               <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                <span className="material-symbols-outlined text-[24px] text-gray-950">photo_camera</span>
+                <span aria-hidden className="text-[24px] leading-none">📸</span>
               </div>
               <div className="text-center">
                 <p className="font-semibold text-gray-950 text-[15px]">Report an issue</p>

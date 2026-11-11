@@ -220,7 +220,7 @@ export async function upsertCivicUser(sessionId: string, city?: SupportedCity): 
         id: sessionId,
         total_points: 50,
         total_reports: 1,
-        badge_level: 'Civic Newcomer',
+        badge_level: getBadge(50),
         city: city || null,
       })
       .select()
@@ -361,7 +361,7 @@ export async function getProfile(session: string): Promise<ProfileData> {
     displayName: user?.display_name ?? null,
     email: rows.find((i) => i.citizen_email)?.citizen_email ?? null,
     city: user?.city ?? rows[0]?.city ?? null,
-    badge: user?.badge_level ?? 'Civic Newcomer',
+    badge: user?.badge_level ?? getBadge(0),
     reports,
     dispatched,
     resolved,
