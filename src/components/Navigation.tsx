@@ -2,13 +2,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-// Stitch design system bottom nav. Active tab = filled-icon pill; the rest are
-// icon + label in the muted variant color.
+// Bottom nav. Emoji-only tabs (no icon-font dependency); active tab = pill.
 const TABS = [
-  { href: '/', label: 'Home', icon: 'home' },
-  { href: '/community', label: 'Community', icon: 'groups' },
-  { href: '/my-reports', label: 'My Reports', icon: 'assignment' },
-  { href: '/profile', label: 'Profile', icon: 'person' },
+  { href: '/', label: 'Home', icon: '🏠' },
+  { href: '/community', label: 'Community', icon: '👥' },
+  { href: '/my-reports', label: 'My Reports', icon: '📋' },
+  { href: '/profile', label: 'Profile', icon: '👤' },
 ];
 
 export function Navigation() {
@@ -22,19 +21,16 @@ export function Navigation() {
           <Link
             key={href}
             href={href}
+            aria-label={label}
+            title={label}
+            aria-current={active ? 'page' : undefined}
             className={
               active
-                ? 'flex flex-col items-center justify-center bg-primary text-on-primary rounded-full px-4 py-1 active:scale-90 transition-all duration-200'
-                : 'flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-all duration-200'
+                ? 'flex items-center justify-center bg-primary rounded-full w-14 h-10 text-[22px] leading-none active:scale-90 transition-all duration-200'
+                : 'flex items-center justify-center w-14 h-10 text-[22px] leading-none opacity-60 hover:opacity-100 active:scale-90 transition-all duration-200'
             }
           >
-            <span
-              className="material-symbols-outlined"
-              style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
-            >
-              {icon}
-            </span>
-            <span className="font-label-caps text-[10px] mt-1">{label}</span>
+            <span aria-hidden>{icon}</span>
           </Link>
         );
       })}
