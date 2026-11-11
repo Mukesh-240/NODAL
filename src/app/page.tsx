@@ -63,18 +63,11 @@ const WARD_LIST: Record<string, string[]> = {
   ],
 };
 
-// Sign-off appended to every notice, so it always carries the student's name and Reg. No.
+// Sign-off appended to every notice with whatever name / Reg. No. the student gave.
 function signature(name: string, regNo: string): string {
-  return `
-
-Yours sincerely,
-${name}
-Reg. No.: ${regNo}
-VIT-AP University`;
+  const lines = [name, regNo && `Reg. No.: ${regNo}`].filter(Boolean);
+  return ['', '', 'Yours sincerely,', ...lines, 'VIT-AP University'].join('\n');
 }
-
-// VIT-AP registration numbers look like 23BCE7001 / 25MIC7201.
-const REG_NO_RE = /^d{2}[A-Z]{3}d{4,5}$/;
 
 // Downscale to keep base64 under the API's 10MB cap and speed up upload.
 // ponytail: fixed 1280px longest edge; expose a setting only if quality complaints come in.
@@ -239,8 +232,6 @@ function ReportContent() {
   // Escalation copies depend on the kind of problem (Registrar is always last).
   const kind = result ? problemKind(result.route.city, result.analysis.category) : 'campus';
   const ccList = escalationCc(kind, recipientId);
-  const regValid = REG_NO_RE.test(regNo.trim().toUpperCase());
-  const identityOk = studentName.trim().length >= 2 && regValid;
   const [loc, setLoc] = useState<DetectedLocation | null>(null);
   const [locating, setLocating] = useState(false);
   const [noticeSent, setNoticeSent] = useState(false);
@@ -302,7 +293,7 @@ function ReportContent() {
   }
 
   async function submit() {
-    if (!file || !loc || !loc.city || !loc.ward.trim() || problem.trim().length < MIN_PROBLEM_CHARS || !identityOk) return;
+    if (!file || !loc || !loc.city || !loc.ward.trim() || problem.trim().length < MIN_PROBLEM_CHARS) return;
     // Guard oversize video before encoding (server enforces the same limit).
     if (file.type.startsWith('video/') && file.size > 15 * 1024 * 1024) {
       setError('Video must be under 15MB. Please use a shorter or lower-resolution clip.');
@@ -337,7 +328,7 @@ function ReportContent() {
           frameBase64,
           gpsLat: lat,
           gpsLng: lng,
-          citizenName: `${name} (${reg})`,
+          citizenName: name && reg ? `${name} (${reg})` : name || reg || undefined,
           problemDescription: problem.trim(),
           reporterSession: getSession(),
           cityOverride: loc.city,
@@ -625,9 +616,6 @@ function ReportContent() {
                 className="h-12 px-md rounded-xl bg-surface hairline-all text-primary font-body-md text-[14px] uppercase placeholder:normal-case focus:outline-none focus:border-primary"
               />
             </div>
-            {regNo.trim() && !regValid && (
-              <p className="font-body-md text-[12px] text-error -mt-sm mb-md">Enter a valid Reg. No., e.g. 23BCE7001</p>
-            )}
             <div className="flex gap-sm">
               <button
                 onClick={reset}
@@ -637,7 +625,7 @@ function ReportContent() {
               </button>
               <button
                 onClick={detectLocation}
-                disabled={locating || !identityOk}
+                disabled={locating}
                 className="flex-1 h-12 rounded-full bg-primary text-on-primary font-headline-md text-[15px] flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform"
               >
                 {locating ? (

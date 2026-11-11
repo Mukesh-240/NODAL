@@ -41,8 +41,8 @@ const AnalyzeRequestSchema = z.object({
     .email('Invalid email')
     .max(254, 'Email too long')
     .optional(),
-  // "Name (REGNO)" — required: every letter is signed by the student.
-  citizenName: z.string().trim().min(3, 'Name and registration number are required').max(120, 'Name too long'),
+  // "Name (REGNO)" as typed by the student — recorded, not validated.
+  citizenName: z.string().trim().max(120, 'Name too long').optional(),
   // The student's own account of the problem — drives the analysis context and the letter.
   problemDescription: z.string().trim().min(10, 'Please describe the problem').max(600, 'Description too long'),
   reporterSession: z.string().uuid('Invalid session ID'),
