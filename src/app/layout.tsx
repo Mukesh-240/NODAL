@@ -30,8 +30,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NODAL — VIT-AP Campus Maintenance Reporting",
-  description: "Report VIT-AP hostel, lab and campus maintenance issues with a photo. NODAL classifies, routes to the right warden or department, and drafts the formal requisition. No sign-in.",
+  title: "RESOLVEX — VIT-AP Campus Maintenance Reporting",
+  description: "Report VIT-AP hostel, lab and campus maintenance issues with a photo. RESOLVEX classifies, routes to the right warden or department, and drafts the formal requisition. No sign-in.",
 };
 
 export default function RootLayout({
@@ -45,7 +45,6 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
-        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
       </head>
       <body className="min-h-full flex flex-col pb-24" suppressHydrationWarning>
           <div className="flex-1">{children}</div>

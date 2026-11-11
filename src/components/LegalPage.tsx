@@ -21,8 +21,8 @@ export function LegalPage({
           href="/"
           className="inline-flex items-center gap-1 text-on-surface-variant font-body-md text-[14px] mb-lg hover:text-primary transition-colors"
         >
-          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-          Back to NODAL
+          <span aria-hidden className="leading-none text-[18px]">⬅️</span>
+          Back to RESOLVEX
         </Link>
 
         <header className="mb-xl">

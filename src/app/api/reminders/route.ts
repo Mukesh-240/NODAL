@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'DB fetch failed' }, { status: 500 });
   }
 
-  const baseUrl = process.env.NODAL_BASE_URL ?? 'https://nodal.app';
+  const baseUrl = process.env.NODAL_BASE_URL ?? 'https://nodal-topaz.vercel.app';
 
   for (const issue of issues as ReminderIssue[]) {
     const daysOpen = Math.floor((now - new Date(issue.created_at).getTime()) / 86_400_000);
@@ -117,7 +117,7 @@ ${buildRTITemplate(issue)}
 
 Track your issue: ${trackUrl}
 
-— NODAL Civic Platform
+— RESOLVEX Civic Platform
 `.trim();
 
   await sendDispatchViaResend({
@@ -166,7 +166,7 @@ Send them this email:
 
 ${buildRPWDTemplate(issue, state)}
 
-→ Attach your original NODAL notice + photo to this email.
+→ Attach your original RESOLVEX notice + photo to this email.
    CC the department head.
    Save the sent mail as proof.
 ─────────────────────────────────────
@@ -174,7 +174,7 @@ ${buildRPWDTemplate(issue, state)}
 Full escalation guide: ${baseUrl}/escalate
 Track your issue: ${trackUrl}
 
-— NODAL Civic Platform
+— RESOLVEX Civic Platform
 `.trim();
 
   await sendDispatchViaResend({
@@ -226,7 +226,7 @@ Full templates and instructions: ${baseUrl}/escalate
 No lawyer needed at either forum.
 You have a complete paper trail: notice → RTI → RPWD §23 → this.
 
-— NODAL Civic Platform
+— RESOLVEX Civic Platform
 `.trim();
 
   await sendDispatchViaResend({
@@ -255,7 +255,7 @@ Sir/Madam,
 
 I, ${issue.citizen_name ?? 'the undersigned citizen'}, hereby request the following information under Section 6 of the RTI Act, 2005:
 
-1. Current status of the civic complaint filed on ${date} regarding ${issue.category} at ${issue.ward}, ${issue.city}. NODAL Tracking Reference: ${issue.tracking_code}
+1. Current status of the civic complaint filed on ${date} regarding ${issue.category} at ${issue.ward}, ${issue.city}. RESOLVEX Tracking Reference: ${issue.tracking_code}
 2. Name and designation of the officer assigned to this complaint.
 3. Expected date of remediation.
 4. If no action has been taken — reason for non-compliance with RPWD Act 2016 §40 & §45.
@@ -287,12 +287,12 @@ I write regarding inaccessible public infrastructure that remains unaddressed de
 Issue: ${issue.category} at ${issue.ward}, ${issue.city}
 Date of original notice: ${date}
 Department notified: ${issue.department}
-NODAL Tracking Reference: ${issue.tracking_code}
+RESOLVEX Tracking Reference: ${issue.tracking_code}
 Days elapsed without response: 15+
 
 The department is in violation of RPWD Act 2016 §40 & §45. I request intervention under RPWD Act §23.
 
-Attachments: Original NODAL notice, photographic evidence, RTI acknowledgement.
+Attachments: Original RESOLVEX notice, photographic evidence, RTI acknowledgement.
 
 Yours faithfully,
 ${issue.citizen_name ?? '[Your Name]'}

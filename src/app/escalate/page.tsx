@@ -38,12 +38,12 @@ export default function EscalatePage() {
       cost: "Free",
       deadline: "Department in-charge must respond within 48 hours.",
       what:
-        "Send an official reminder citing your NODAL tracking reference directly to the assigned department supervisor. College facilities cells are expected to log an active work order.",
+        "Send an official reminder citing your RESOLVEX tracking reference directly to the assigned department supervisor. College facilities cells are expected to log an active work order.",
       how: [
         "Open your student email or Gmail compose",
         "Send to the department email (hostel, electrical, IT, sanitation)",
         "Paste the reminder template below",
-        "Cite the NODAL Tracking Reference",
+        "Cite the RESOLVEX Tracking Reference",
         "Keep the sent email thread for your records",
       ],
       clickPath: [
@@ -145,7 +145,7 @@ Respected Dean / Principal,
 I am formally placing on record a critical unresolved campus facility failure that has remained unaddressed for over 14 days, despite multiple communications.
 
 Timeline & Evidence:
-1. Requisition logged: [Date] (NODAL Ref: [NDL-XXX-XXXX-XXXX])
+1. Requisition logged: [Date] (RESOLVEX Ref: [NDL-XXX-XXXX-XXXX])
 2. Department follow-up: [Date]
 3. Warden / Estate escalation: [Date]
 4. Current Status: Unresolved

@@ -14,7 +14,7 @@ export function Navigation() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-gutter py-md bg-surface border-t border-outline-variant">
+    <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-gutter pt-sm pb-[calc(env(safe-area-inset-bottom)+0.5rem)] bg-surface border-t border-outline-variant">
       {TABS.map(({ href, label, icon }) => {
         const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
         return (

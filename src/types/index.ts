@@ -1,4 +1,4 @@
-// ─── NODAL Type Definitions ──────────────────────────────────────────────────
+// ─── RESOLVEX Type Definitions ──────────────────────────────────────────────────
 // Single source of truth for all types used across the project.
 
 // ── Issue Categories ──────────────────────────────────────────────────────────
@@ -120,11 +120,12 @@ export interface RouteIssueInput {
 // Tool 3: draft_dispatch
 export interface DraftDispatchInput {
   issueId: string;
-  trackingCode: string;       // human-readable NODAL Tracking Ref, cited in the docs
+  trackingCode: string;       // human-readable RESOLVEX Tracking Ref, cited in the docs
   analysis: AnalyzeImageOutput;
   route: RouteResult;
   reportedAt: string;
   legalHint?: string;         // AI-selected applicable statutes to weave into the prose
+  problemDescription?: string; // the student's own words — primary account in the letter
 }
 
 export interface DraftDispatchOutput {
@@ -222,6 +223,7 @@ export interface AnalyzeRequest {
   gpsLng: number;
   citizenEmail?: string;
   citizenName?: string;
+  problemDescription: string; // student's own account, 10–600 chars
   reporterSession: string;
   // Citizen-confirmed routing (item 3): user can correct the detected city/ward.
   cityOverride?: SupportedCity;
@@ -244,7 +246,7 @@ export interface LegalReasoningResult {
 }
 
 // What the agent decided and why — surfaced to the citizen (transparency) and
-// stored on the issue. NODAL prepares everything; the citizen sends.
+// stored on the issue. RESOLVEX prepares everything; the citizen sends.
 export interface AgentReasoning {
   confidence: number;             // 0–1, Gemini's self-reported confidence
   lowConfidence: boolean;         // confidence < 0.65 (flagged for review, not retried)

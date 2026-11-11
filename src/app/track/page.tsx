@@ -185,7 +185,7 @@ function TrackContent() {
             disabled={loading}
             className="h-12 px-lg rounded-full bg-primary text-on-primary font-headline-md text-[15px] flex items-center gap-2 disabled:opacity-50 active:scale-[0.98] transition-transform"
           >
-            <span className="material-symbols-outlined text-[20px]">search</span>
+            <span aria-hidden className="leading-none text-[20px]">🔍</span>
             Track
           </button>
         </form>
@@ -216,7 +216,7 @@ function TrackContent() {
             {/* Notify-me: status advanced since the student last looked */}
             {advanced && (
               <div className="animate-fade-up bg-emerald-50 border border-emerald-200 rounded-xl px-md py-sm mb-md flex items-center gap-2">
-                <span className="material-symbols-outlined text-emerald-600" style={{ fontSize: '18px' }}>notifications_active</span>
+                <span aria-hidden className="leading-none text-emerald-600" style={{ fontSize: '18px' }}>🔔</span>
                 <p className="font-body-md text-[13px] text-emerald-800">
                   <strong>Status update:</strong> this report moved to “{issue.status.replace('_', ' ')}” since you last checked.
                 </p>
@@ -229,8 +229,8 @@ function TrackContent() {
                 (tracked
                   ? 'bg-surface-container text-on-surface-variant hairline-all'
                   : 'bg-primary text-on-primary')}>
-              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-                {tracked ? 'notifications_off' : 'notifications'}
+              <span aria-hidden className="leading-none " style={{ fontSize: '18px' }}>
+                {tracked ? '🔕' : '🔔'}
               </span>
               {tracked ? 'Tracking — tap to stop' : 'Notify me of status changes'}
             </button>
@@ -278,7 +278,7 @@ function TrackContent() {
             </div>
 
             <p className="font-body-md text-[12px] text-on-surface-variant mt-md flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[15px]">schedule</span>
+              <span aria-hidden className="leading-none text-[15px]">⏱️</span>
               {formatIssueDuration(issue.created_at, issue.resolved_at)}
             </p>
 
@@ -290,7 +290,7 @@ function TrackContent() {
                   disabled={resolving}
                   className="w-full h-11 rounded-full bg-surface-container-lowest hairline-all text-primary font-headline-md text-[14px] flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform"
                 >
-                  <span className="material-symbols-outlined text-[18px]">task_alt</span>
+                  <span aria-hidden className="leading-none text-[18px]">✅</span>
                   {resolving ? 'Marking…' : 'Mark as resolved'}
                 </button>
                 <p className="font-body-md text-[11px] text-on-surface-variant text-center mt-2">
@@ -309,7 +309,7 @@ function TrackContent() {
                 disabled={deleting}
                 className="w-full h-11 rounded-full hairline-all text-error font-headline-md text-[14px] flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform"
               >
-                <span className="material-symbols-outlined text-[18px]">delete</span>
+                <span aria-hidden className="leading-none text-[18px]">🗑️</span>
                 {deleting ? 'Deleting…' : 'Delete this report'}
               </button>
               <p className="font-body-md text-[11px] text-on-surface-variant text-center mt-2">
@@ -324,7 +324,7 @@ function TrackContent() {
 
         {deleted && !loading && (
           <div className="animate-fade-up bg-surface hairline-all rounded-xl p-lg text-center">
-            <span className="material-symbols-outlined text-[28px] text-primary">check_circle</span>
+            <span aria-hidden className="leading-none text-[28px] text-primary">✅</span>
             <p className="font-headline-md text-[16px] text-primary mt-2">Report deleted</p>
             <p className="font-body-md text-[13px] text-on-surface-variant mt-1">
               The report and its photo have been permanently removed.

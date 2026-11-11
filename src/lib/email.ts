@@ -1,4 +1,4 @@
-// ─── NODAL Email Service ──────────────────────────────────────────────────────
+// ─── RESOLVEX Email Service ──────────────────────────────────────────────────────
 // Sends citizen confirmation emails with tracking code and dispatch copy.
 //
 // Open Source Attribution:
@@ -16,7 +16,7 @@ function resend(): Resend {
   return _resend;
 }
 const FROM = process.env.RESEND_FROM_EMAIL || 'nodal@civic.app';
-const BASE_URL = process.env.NODAL_BASE_URL || 'https://nodal.vercel.app';
+const BASE_URL = process.env.NODAL_BASE_URL || 'https://nodal-topaz.vercel.app';
 
 // Plain dispatch via Resend — fallback for when the citizen hasn't authorized
 // Gmail (e.g. a judge who can't be a Google test user). Reply-to is set to the
@@ -86,7 +86,7 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
 
         <!-- Header -->
         <tr><td style="background:#1A237E;padding:24px 32px;">
-          <h1 style="color:#FFFFFF;margin:0;font-size:28px;letter-spacing:2px;">NODAL</h1>
+          <h1 style="color:#FFFFFF;margin:0;font-size:28px;letter-spacing:2px;">RESOLVEX</h1>
           <p style="color:#9FA8DA;margin:4px 0 0;font-size:14px;">Autonomous Civic Infrastructure Audit Engine</p>
         </td></tr>
 
@@ -97,7 +97,7 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
 
           <!-- Tracking Code -->
           <div style="background:#E8EAF6;border-radius:8px;padding:20px;text-align:center;margin-bottom:24px;">
-            <p style="color:#3949AB;margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:1px;">NODAL Tracking Ref</p>
+            <p style="color:#3949AB;margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:1px;">RESOLVEX Tracking Ref</p>
             <p style="color:#1A237E;font-size:32px;font-weight:bold;margin:0;letter-spacing:4px;">${trackingCode}</p>
             <a href="${BASE_URL}/track?code=${trackingCode}" style="display:inline-block;margin-top:12px;background:#3949AB;color:#FFF;padding:8px 20px;border-radius:4px;text-decoration:none;font-size:14px;">Track this issue →</a>
           </div>
@@ -157,12 +157,12 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
           </div>
           ` : ''}
 
-          <p style="color:#999;font-size:12px;margin:24px 0 0;">NODAL Tracking Ref: <strong>${trackingCode}</strong> — cite this in any follow-up · Filed via NODAL Civic Platform · <a href="${BASE_URL}" style="color:#3949AB;">nodal-civic.app</a></p>
+          <p style="color:#999;font-size:12px;margin:24px 0 0;">RESOLVEX Tracking Ref: <strong>${trackingCode}</strong> — cite this in any follow-up · Filed via RESOLVEX Civic Platform · <a href="${BASE_URL}" style="color:#3949AB;">nodal-civic.app</a></p>
         </td></tr>
 
         <!-- Footer -->
         <tr><td style="background:#F5F5F5;padding:16px 32px;border-top:1px solid #E0E0E0;">
-          <p style="color:#9E9E9E;font-size:11px;margin:0;">NODAL uses Gemini 3.5 Flash (Google AI Studio) for image analysis and dispatch generation. Map data © OpenStreetMap contributors (ODbL). This is a civic technology platform submitted for Vibe2Ship Hackathon 2026.</p>
+          <p style="color:#9E9E9E;font-size:11px;margin:0;">RESOLVEX uses Gemini 3.5 Flash (Google AI Studio) for image analysis and dispatch generation. Map data © OpenStreetMap contributors (ODbL). This is a civic technology platform submitted for Vibe2Ship Hackathon 2026.</p>
         </td></tr>
 
       </table>
@@ -174,7 +174,7 @@ export async function sendConfirmationEmail(params: SendConfirmationEmailParams)
   await resend().emails.send({
     from: FROM,
     to,
-    subject: `Your NODAL Report: ${analysis.description} in ${route.ward}, ${route.city} — Ref: ${trackingCode}`,
+    subject: `Your RESOLVEX Report: ${analysis.description} in ${route.ward}, ${route.city} — Ref: ${trackingCode}`,
     html,
   });
 }

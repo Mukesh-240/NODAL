@@ -53,7 +53,7 @@ function ProfileContent() {
     <div className="min-h-screen bg-background pb-28">
       <header className="sticky top-0 z-40 flex items-center justify-between px-gutter py-md bg-surface hairline-b">
         <Link href="/" className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
-          <span className="material-symbols-outlined">arrow_back</span>
+          <span aria-hidden className="leading-none ">⬅️</span>
         </Link>
         <h1 className="font-headline-md text-[18px] text-primary">Campus Profile</h1>
         <span className="w-10 h-10" aria-hidden />
@@ -93,7 +93,7 @@ function ProfileContent() {
             <section className="animate-fade-up delay-100 mb-lg">
               <div className="bg-surface hairline-all rounded-xl p-md flex items-center justify-between">
                 <div className="flex items-center gap-2 text-primary">
-                  <span className="material-symbols-outlined text-[20px]">location_on</span>
+                  <span aria-hidden className="leading-none text-[20px]">📍</span>
                   <div>
                     <p className="font-label-caps text-label-caps uppercase text-on-surface-variant">Location</p>
                     <p className="font-headline-md text-[15px] text-primary">{data.city || 'Not set'}</p>

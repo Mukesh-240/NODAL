@@ -17,6 +17,7 @@ import {
 import { getSession } from '@/lib/session';
 import { detectCityFromGPS, cityCenter } from '@/lib/routingMatrix';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { RECIPIENT_GROUPS, findRecipient, defaultRecipientId } from '@/lib/recipientGroups';
 
 const CITIES: SupportedCity[] = [
   "Men's Hostels (MH)",
@@ -62,15 +63,11 @@ const WARD_LIST: Record<string, string[]> = {
   ],
 };
 
-// "Copies to:" footer appended to the notice the citizen sends — mirrors the
-// server-side formatCopiesFooter (kept inline so the server recipients module
-// stays out of the client bundle).
-function copiesFooter(chain: AnalyzeResponse['chain']): string {
-  const roles = [chain.to.role, ...chain.cc.map((c) => c.role)].join(', ');
-  const demoNote = chain.mode === 'demo'
-    ? '\n[Demo: dispatch routed to a test inbox; the addresses above are the real intended roles.]'
-    : '';
-  return `\n\n— Copies to: ${roles}${demoNote}`;
+// Footer appended to the notice the student sends: who it is addressed to.
+function copiesFooter(toRole: string): string {
+  return `
+
+— Addressed to: ${toRole}`;
 }
 
 // Downscale to keep base64 under the API's 10MB cap and speed up upload.
@@ -205,6 +202,7 @@ const STAGES = [
   { icon: '🛰️', name: 'Context Agent', sub: 'Checking nearby infrastructure…' },
   { icon: '📧', name: 'Notice Agent', sub: 'Drafting dispatch notice…' },
 ];
+const MIN_PROBLEM_CHARS = 10;
 const STAGE_MS = 1200; // time each stage animates before advancing
 
 function ReportContent() {
@@ -221,9 +219,17 @@ function ReportContent() {
   // reg no. let the student sign the requisition; both can be left blank.
   const [studentName, setStudentName] = useState('');
   const [regNo, setRegNo] = useState('');
+  // The student's own account of the problem — required; it goes into the letter.
+  const [problem, setProblem] = useState('');
+  // Who the notice is sent to: pre-selected from routing, changeable by the student.
+  const [recipientId, setRecipientId] = useState('');
+  const selectedRecipient = findRecipient(recipientId);
   const [step, setStep] = useState(0);
   const [error, setError] = useState('');
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  // The recipient the router (driven by the AI's category) picked for this report.
+  const aiRecipientId = result ? defaultRecipientId(result.route.department.name) : '';
+  const aiRecipient = findRecipient(aiRecipientId);
   const [loc, setLoc] = useState<DetectedLocation | null>(null);
   const [locating, setLocating] = useState(false);
   const [noticeSent, setNoticeSent] = useState(false);
@@ -285,7 +291,7 @@ function ReportContent() {
   }
 
   async function submit() {
-    if (!file || !loc || !loc.city || !loc.ward.trim()) return;
+    if (!file || !loc || !loc.city || !loc.ward.trim() || problem.trim().length < MIN_PROBLEM_CHARS) return;
     // Guard oversize video before encoding (server enforces the same limit).
     if (file.type.startsWith('video/') && file.size > 15 * 1024 * 1024) {
       setError('Video must be under 15MB. Please use a shorter or lower-resolution clip.');
@@ -321,6 +327,7 @@ function ReportContent() {
           gpsLat: lat,
           gpsLng: lng,
           citizenName: name ? (reg ? `${name} (${reg})` : name) : reg || undefined,
+          problemDescription: problem.trim(),
           reporterSession: getSession(),
           cityOverride: loc.city,
           wardOverride: loc.ward,
@@ -332,6 +339,7 @@ function ReportContent() {
       }
       setStep(STAGES.length); // mark every stage complete
       setNoticeSent(false);
+      setRecipientId(defaultRecipientId(data.route.department.name));
       setResult(data);
       setPhase('done');
       // Remember the confirmed location so the leaderboard can default to "My Ward".
@@ -354,16 +362,10 @@ function ReportContent() {
   // Item 1 — human-in-the-loop dispatch. Build a Gmail compose deep-link prefilled
   // with the routed department, subject and full notice; the citizen taps Send
   // themselves. Marks the issue "Notice Sent" (we can't confirm delivery).
-  // Actual send targets from the chain — the test inbox in demo mode, the dept
-  // email in live (ward/commissioner have no verified address, so cc is empty
-  // in live). Never opens a compose to a guessed government address.
+  // Send target = the recipient the student picked (nothing is sent until they
+  // press Send in their own mail app).
   function chainTargets() {
-    // Use ONLY the chain's resolved sendTo — in demo that's the test inbox, in
-    // live it's the dept email. Never fall back to route.department.email, or a
-    // missing demo sink would leak the real gov address into the compose window.
-    const to = result?.chain.to.sendTo ?? '';
-    const cc = [...new Set((result?.chain.cc.map((c) => c.sendTo) || []).filter((e): e is string => !!e))];
-    return { to, cc };
+    return { to: selectedRecipient?.email ?? '', cc: [] as string[] };
   }
 
   // Save the uploaded photo to the device so the citizen can attach it in Gmail
@@ -382,7 +384,7 @@ function ReportContent() {
 
   function copyNotice() {
     if (!result) return;
-    const text = `Subject: ${result.dispatch.subject}\n\n${result.dispatch.emailNotice}${copiesFooter(result.chain)}`;
+    const text = `Subject: ${result.dispatch.subject}\n\n${result.dispatch.emailNotice}${copiesFooter(selectedRecipient?.label ?? result.route.department.name)}`;
     navigator.clipboard?.writeText(text).then(
       () => { setCopied(true); setTimeout(() => setCopied(false), 2000); },
       () => {},
@@ -393,7 +395,7 @@ function ReportContent() {
     if (!result) return;
     const { to, cc } = chainTargets();
     const su = result.dispatch.subject;
-    const body = result.dispatch.emailNotice + copiesFooter(result.chain);
+    const body = result.dispatch.emailNotice + copiesFooter(selectedRecipient?.label ?? result.route.department.name);
     if (!to) {
       console.warn('[gmail] No department email on route — cannot prefill recipient.', result.route);
     }
@@ -412,13 +414,28 @@ function ReportContent() {
       body: JSON.stringify({ code: result.trackingCode, action: 'notice_sent' }),
     }).catch(() => {});
     setNoticeSent(true);
-    window.open(gmailUrl, '_blank', 'noopener');
+    if (!isMobile) { window.open(gmailUrl, '_blank', 'noopener'); return; }
+
+    // Phones: open the Gmail app itself, not web Gmail. Android → Chrome intent
+    // aimed at the Gmail package (falls back to web Gmail if it isn't installed);
+    // iOS → Gmail's URL scheme, falling back to the default mail app.
+    const q = `subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}` +
+      (cc.length ? `&cc=${encodeURIComponent(cc.join(','))}` : '');
+    // Short delay so the photo download starts before we navigate away.
+    setTimeout(() => {
+      if (/Android/i.test(navigator.userAgent)) {
+        window.location.href = `intent:${to}?${q}#Intent;scheme=mailto;package=com.google.android.gm;S.browser_fallback_url=${encodeURIComponent(gmailUrl)};end`;
+      } else {
+        window.location.href = `googlegmail:///co?to=${encodeURIComponent(to)}&${q}`;
+        setTimeout(() => { if (!document.hidden) window.location.href = `mailto:${to}?${q}`; }, 1500);
+      }
+    }, 400);
   }
 
   function mailtoLink(): string {
     if (!result) return '#';
     const { to, cc } = chainTargets();
-    const body = result.dispatch.emailNotice + copiesFooter(result.chain);
+    const body = result.dispatch.emailNotice + copiesFooter(selectedRecipient?.label ?? result.route.department.name);
     const ccParam = cc.length ? `&cc=${encodeURIComponent(cc.join(','))}` : '';
     return `mailto:${to}?subject=${encodeURIComponent(result.dispatch.subject)}${ccParam}&body=${encodeURIComponent(body)}`;
   }
@@ -434,6 +451,8 @@ function ReportContent() {
     setPreviewUrl('');
     setResult(null);
     setLoc(null);
+    setProblem('');
+    setRecipientId('');
     setNoticeSent(false);
     setError('');
     if (fileRef.current) fileRef.current.value = '';
@@ -443,7 +462,7 @@ function ReportContent() {
     <div className="min-h-screen bg-white pb-28">
       <header className="px-gutter pt-xl pb-lg max-w-[560px] mx-auto">
         <div className="flex items-start justify-between gap-md">
-          <h1 className="font-display-lg text-[40px] font-bold tracking-tighter text-primary">NODAL</h1>
+          <h1 className="font-display-lg text-[30px] sm:text-[40px] font-bold tracking-tighter text-primary">RESOLVEX</h1>
           <span className="shrink-0 mt-2 rounded-full bg-gray-100 px-3 py-1 text-[12px] font-semibold text-gray-700">
             VIT-AP University
           </span>
@@ -524,7 +543,7 @@ function ReportContent() {
               </div>
             </div>
 
-            {/* What NODAL handles */}
+            {/* What RESOLVEX handles */}
             <section className="mt-8">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Campus Issues Handled</p>
               <div className="flex flex-wrap gap-2">
@@ -576,7 +595,7 @@ function ReportContent() {
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={previewUrl} alt="preview" className="w-full rounded-xl mb-md object-cover max-h-96 hairline-all" />
             )}
-            <div className="grid grid-cols-2 gap-sm mb-md">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-sm mb-md">
               <input
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
@@ -613,7 +632,7 @@ function ReportContent() {
                   </>
                 ) : (
                   <>
-                    <span className="material-symbols-outlined text-[20px]">my_location</span>
+                    <span aria-hidden className="leading-none text-[20px]">🎯</span>
                     Continue
                   </>
                 )}
@@ -627,7 +646,7 @@ function ReportContent() {
           <div className="animate-fade-up">
             <div className="bg-surface hairline-all rounded-xl p-lg">
               <div className="flex items-center gap-2 text-primary mb-sm">
-                <span className="material-symbols-outlined text-[20px]">location_on</span>
+                <span aria-hidden className="leading-none text-[20px]">📍</span>
                 <h2 className="font-headline-md text-[16px]">Confirm the location</h2>
               </div>
               <p className="font-body-md text-[13px] text-on-surface-variant mb-md">
@@ -669,6 +688,22 @@ function ReportContent() {
                 ))}
               </select>
 
+              <label htmlFor="problem" className="font-label-caps text-label-caps uppercase text-on-surface-variant">Describe the problem</label>
+              <textarea
+                id="problem"
+                value={problem}
+                onChange={(e) => setProblem(e.target.value)}
+                maxLength={600}
+                rows={4}
+                placeholder="e.g. Water has been leaking from the ceiling in room 214 since Monday. The floor is slippery and the socket nearby is wet."
+                className="w-full px-md py-sm rounded-xl bg-surface-container-lowest hairline-all text-primary font-body-md mt-1 resize-none focus:outline-none focus:border-primary"
+              />
+              <p className="font-body-md text-[12px] text-on-surface-variant mb-lg mt-1">
+                {problem.trim().length < MIN_PROBLEM_CHARS
+                  ? 'Write at least 10 characters. Your words go into the email.'
+                  : `${problem.length}/600`}
+              </p>
+
               <div className="flex gap-sm">
                 <button
                   onClick={() => setPhase('preview')}
@@ -678,7 +713,7 @@ function ReportContent() {
                 </button>
                 <button
                   onClick={submit}
-                  disabled={!loc.city || !loc.ward.trim()}
+                  disabled={!loc.city || !loc.ward.trim() || problem.trim().length < MIN_PROBLEM_CHARS}
                   className="flex-1 h-12 rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
                 >
                   {loc.gpsOk ? 'Looks right — file report' : 'File report'}
@@ -716,9 +751,13 @@ function ReportContent() {
                           )}
                         </p>
                         {done && (
-                          <span className="material-symbols-outlined text-[18px] shrink-0" style={{ color: '#10b981' }}>
-                            check_circle
+                          <span aria-label="done" className="relative flex w-2.5 h-2.5 shrink-0 mr-1">
+                            <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-500 opacity-75 animate-ping [animation-iteration-count:2]" />
+                            <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-emerald-500 animate-stamp" />
                           </span>
+                        )}
+                        {active && (
+                          <span aria-hidden className="w-3.5 h-3.5 shrink-0 mr-0.5 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
                         )}
                       </div>
                       <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
@@ -748,7 +787,7 @@ function ReportContent() {
         {/* ERROR */}
         {phase === 'error' && (
           <div className="text-center py-16 animate-fade-up">
-            <span className="material-symbols-outlined text-[48px] text-error">error</span>
+            <span aria-hidden className="leading-none text-[48px] text-error">⚠️</span>
             <p className="font-body-md text-on-background mt-sm mb-lg max-w-[320px] mx-auto">{error}</p>
             <button
               onClick={() => setPhase('confirm')}
@@ -783,7 +822,7 @@ function ReportContent() {
               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-primary opacity-20" />
               <div className="p-md hairline-b flex items-center justify-between bg-surface-container-lowest">
                 <div className="flex items-center gap-sm text-primary">
-                  <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>description</span>
+                  <span aria-hidden className="leading-none text-[18px]">📄</span>
                   <span className="font-label-caps text-label-caps tracking-widest text-on-surface-variant">Official Notice</span>
                 </div>
                 <span className="font-stats-tabular text-[11px] text-on-surface-variant">{result.trackingCode}</span>
@@ -837,11 +876,6 @@ function ReportContent() {
                       </>
                     )}
                   </p>
-                  {result.chain.mode === 'demo' && (
-                    <p className="font-body-md text-[11px] text-on-surface-variant mt-1 italic">
-                      [Demo: some official addresses route to a test inbox.]
-                    </p>
-                  )}
                 </div>
               </div>
 
@@ -892,157 +926,163 @@ function ReportContent() {
               🏆 You earned {result.pointsEarned} campus points
             </p>
 
-            {/* Agent reasoning — transparency: what the agent decided + why. NODAL
-                prepares everything; you send. */}
-            <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
-              <div className="flex items-center gap-2 mb-sm text-primary">
-                <span className="material-symbols-outlined text-[18px]">neurology</span>
-                <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Agent reasoning</h3>
-              </div>
-              <div className="flex flex-col gap-sm">
-                <Row label="AI confidence">
-                  <span className="font-stats-tabular">
-                    {Math.round(result.agentReasoning.confidence * 100)}%
-                    {result.agentReasoning.lowConfidence && ' · flagged for review'}
-                  </span>
-                </Row>
-                <Row label="Ward pattern">
-                  <span className="text-right">
-                    {result.agentReasoning.patternDetected
-                      ? `${result.agentReasoning.repeatCount} prior reports — escalated to Dean / Estates Head`
-                      : 'None detected'}
-                  </span>
-                </Row>
-              </div>
-            </div>
-
-            {/* Legal acts selected by AI — per-act reasoning + applies/not. The
-                citizen's hallucination checkpoint before they send. */}
-            <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
-              <p className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-md">Legal acts selected by AI</p>
-              <div className="flex flex-col gap-sm">
-                {result.legalReasoning.applicableActs.map((act, i) => (
-                  <div key={i} className="flex gap-2 items-start">
-                    <span
-                      className={`material-symbols-outlined text-[16px] mt-0.5 shrink-0 ${act.applies ? '' : 'text-on-surface-variant opacity-40'}`}
-                      style={act.applies ? { color: '#10b981' } : undefined}
-                    >
-                      {act.applies ? 'check_circle' : 'cancel'}
-                    </span>
-                    <div>
-                      <span className="font-headline-md text-[13px] text-primary">{act.act} {act.section}</span>
-                      <p className="font-body-md text-[12px] text-on-surface-variant mt-0.5">{act.reasoning}</p>
-                    </div>
+            {/* The AI's reasoning panels, collapsed so the phone screen leads with the send flow */}
+            <details className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl group/ai">
+              <summary className="flex items-center justify-between cursor-pointer list-none p-md font-headline-md text-[14px] text-primary">
+                <span>🧠 How the AI decided</span>
+                <span aria-hidden className="leading-none text-[14px] transition-transform group-open/ai:rotate-180">🔽</span>
+              </summary>
+              <div className="px-md pb-md">
+                {/* Agent reasoning — transparency: what the agent decided + why. RESOLVEX
+                    prepares everything; you send. */}
+                <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
+                  <div className="flex items-center gap-2 mb-sm text-primary">
+                    <span aria-hidden className="leading-none text-[18px]">🧠</span>
+                    <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Agent reasoning</h3>
                   </div>
-                ))}
-              </div>
-              {result.legalReasoning.hallucination_warning && (
-                <p className="font-body-md text-[12px] mt-md hairline-t pt-sm" style={{ color: '#FB8C00' }}>
-                  ⚠ {result.legalReasoning.hallucination_warning}
-                </p>
-              )}
-              <div className="mt-md hairline-t pt-sm">
-                <p className="font-body-md text-[12px] text-on-surface-variant">
-                  Review the AI&apos;s reasoning above before sending. If anything looks wrong, tap Edit before dispatching.
-                </p>
-              </div>
-            </div>
-
-            {/* Location context + priority explainer (Tool 1.5 — Places proximity).
-                Only added when nearby campus-critical facilities were found. */}
-            {(() => {
-              const sev = result.adjustedSeverity ?? result.analysis.severity;
-              const level = getSeverityLevel(sev); // critical | high | medium | low
-              const sevColor = SEVERITY_COLORS[level];
-              const poiEmoji: Record<string, string> = {
-                hospital: '🏥', school: '🏫', bus_station: '🚌', police: '🚓', fire_station: '🚒',
-              };
-              const poiLabel: Record<string, string> = {
-                hospital: 'Hospital', school: 'School', bus_station: 'Bus Stop',
-                police: 'Police', fire_station: 'Fire Station',
-              };
-              const riskNote: Record<string, string> = {
-                hospital: 'emergency access risk', fire_station: 'emergency access risk',
-                police: 'emergency access risk', school: 'vulnerable pedestrians',
-                bus_station: 'high pedestrian zone',
-              };
-              const boosted =
-                result.proximityContext.length > 0 &&
-                result.adjustedSeverity > result.analysis.severity;
-
-              return (
-                <>
-                  {/* Location Context card */}
-                  {result.proximityContext.length > 0 && (
-                    <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
-                      <div className="flex items-center gap-2 mb-sm text-primary">
-                        <span className="material-symbols-outlined text-[18px]">location_on</span>
-                        <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Location context</h3>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {result.proximityContext.map((p, i) => (
-                          <span
-                            key={i}
-                            className="font-body-md text-[12px] bg-surface-container rounded-full px-3 py-1 text-primary"
-                          >
-                            {poiEmoji[p.type] ?? '📍'} {poiLabel[p.type] ?? p.type} {p.distanceM}m
-                          </span>
-                        ))}
-                      </div>
-                      {boosted && (
-                        <p className="font-body-md text-[12px] mt-sm" style={{ color: sevColor }}>
-                          Severity automatically elevated from {result.analysis.severity}/10 to {result.adjustedSeverity}/10
-                          due to proximity to critical infrastructure.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Severity bar */}
-                  <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
-                    <div className="flex items-center justify-between mb-sm">
-                      <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Severity</h3>
-                      <span className="font-stats-tabular text-[13px] font-semibold" style={{ color: sevColor }}>
-                        {sev}/10 · {level.toUpperCase()}
+                  <div className="flex flex-col gap-sm">
+                    <Row label="AI confidence">
+                      <span className="font-stats-tabular">
+                        {Math.round(result.agentReasoning.confidence * 100)}%
+                        {result.agentReasoning.lowConfidence && ' · flagged for review'}
                       </span>
-                    </div>
-                    <div className="h-2 w-full bg-surface-container rounded-full overflow-hidden">
-                      <div
-                        className="h-2 rounded-full transition-all duration-700"
-                        style={{ width: `${sev * 10}%`, backgroundColor: sevColor }}
-                      />
-                    </div>
+                    </Row>
+                    <Row label="Ward pattern">
+                      <span className="text-right">
+                        {result.agentReasoning.patternDetected
+                          ? `${result.agentReasoning.repeatCount} prior reports — escalated to Dean / Estates Head`
+                          : 'None detected'}
+                      </span>
+                    </Row>
                   </div>
+                </div>
 
-                  {/* Why this priority? — expandable */}
-                  <details className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md group">
-                    <summary className="flex items-center justify-between cursor-pointer list-none text-primary">
-                      <span className="font-headline-md text-[14px]">Why this priority?</span>
-                      <span className="material-symbols-outlined text-[20px] text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
-                    </summary>
-                    <div className="mt-md pt-sm hairline-t">
-                      <p className="font-body-md text-[13px] text-primary mb-sm">
-                        Gemini assessed this report as <strong>{getPriority(sev).toUpperCase()}</strong> priority because:
-                      </p>
-                      <ul className="flex flex-col gap-1">
-                        <li className="font-body-md text-[12px] text-on-surface-variant">
-                          ✓ {CATEGORY_LABELS[result.analysis.category]} detected
-                        </li>
-                        {result.proximityContext.map((p, i) => (
-                          <li key={i} className="font-body-md text-[12px] text-on-surface-variant">
-                            ✓ Near {p.name} ({p.distanceM}m){riskNote[p.type] ? ` — ${riskNote[p.type]}` : ''}
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="font-body-md text-[12px] text-on-surface-variant mt-sm">
-                        Confidence: {Math.round(result.agentReasoning.confidence * 100)}%
-                      </p>
-                    </div>
-                  </details>
-                </>
-              );
-            })()}
+                {/* Legal acts selected by AI — per-act reasoning + applies/not. The
+                    citizen's hallucination checkpoint before they send. */}
+                <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
+                  <p className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-md">Legal acts selected by AI</p>
+                  <div className="flex flex-col gap-sm">
+                    {result.legalReasoning.applicableActs.map((act, i) => (
+                      <div key={i} className="flex gap-2 items-start">
+                        <span aria-hidden className={`leading-none text-[16px] mt-0.5 shrink-0 ${act.applies ? '' : 'text-on-surface-variant opacity-40'}`} style={act.applies ? { color: '#10b981' } : undefined}>
+                          {act.applies ? '✅' : '❌'}
+                        </span>
+                        <div>
+                          <span className="font-headline-md text-[13px] text-primary">{act.act} {act.section}</span>
+                          <p className="font-body-md text-[12px] text-on-surface-variant mt-0.5">{act.reasoning}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {result.legalReasoning.hallucination_warning && (
+                    <p className="font-body-md text-[12px] mt-md hairline-t pt-sm" style={{ color: '#FB8C00' }}>
+                      ⚠ {result.legalReasoning.hallucination_warning}
+                    </p>
+                  )}
+                  <div className="mt-md hairline-t pt-sm">
+                    <p className="font-body-md text-[12px] text-on-surface-variant">
+                      Review the AI&apos;s reasoning above before sending. If anything looks wrong, tap Edit before dispatching.
+                    </p>
+                  </div>
+                </div>
 
+                {/* Location context + priority explainer (Tool 1.5 — Places proximity).
+                    Only added when nearby campus-critical facilities were found. */}
+                {(() => {
+                  const sev = result.adjustedSeverity ?? result.analysis.severity;
+                  const level = getSeverityLevel(sev); // critical | high | medium | low
+                  const sevColor = SEVERITY_COLORS[level];
+                  const poiEmoji: Record<string, string> = {
+                    hospital: '🏥', school: '🏫', bus_station: '🚌', police: '🚓', fire_station: '🚒',
+                  };
+                  const poiLabel: Record<string, string> = {
+                    hospital: 'Hospital', school: 'School', bus_station: 'Bus Stop',
+                    police: 'Police', fire_station: 'Fire Station',
+                  };
+                  const riskNote: Record<string, string> = {
+                    hospital: 'emergency access risk', fire_station: 'emergency access risk',
+                    police: 'emergency access risk', school: 'vulnerable pedestrians',
+                    bus_station: 'high pedestrian zone',
+                  };
+                  const boosted =
+                    result.proximityContext.length > 0 &&
+                    result.adjustedSeverity > result.analysis.severity;
+
+                  return (
+                    <>
+                      {/* Location Context card */}
+                      {result.proximityContext.length > 0 && (
+                        <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
+                          <div className="flex items-center gap-2 mb-sm text-primary">
+                            <span aria-hidden className="leading-none text-[18px]">📍</span>
+                            <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Location context</h3>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {result.proximityContext.map((p, i) => (
+                              <span
+                                key={i}
+                                className="font-body-md text-[12px] bg-surface-container rounded-full px-3 py-1 text-primary"
+                              >
+                                {poiEmoji[p.type] ?? '📍'} {poiLabel[p.type] ?? p.type} {p.distanceM}m
+                              </span>
+                            ))}
+                          </div>
+                          {boosted && (
+                            <p className="font-body-md text-[12px] mt-sm" style={{ color: sevColor }}>
+                              Severity automatically elevated from {result.analysis.severity}/10 to {result.adjustedSeverity}/10
+                              due to proximity to critical infrastructure.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Severity bar */}
+                      <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
+                        <div className="flex items-center justify-between mb-sm">
+                          <h3 className="font-label-caps text-label-caps uppercase text-on-surface-variant">Severity</h3>
+                          <span className="font-stats-tabular text-[13px] font-semibold" style={{ color: sevColor }}>
+                            {sev}/10 · {level.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="h-2 w-full bg-surface-container rounded-full overflow-hidden">
+                          <div
+                            className="h-2 rounded-full transition-all duration-700"
+                            style={{ width: `${sev * 10}%`, backgroundColor: sevColor }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Why this priority? — expandable */}
+                      <details className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md group">
+                        <summary className="flex items-center justify-between cursor-pointer list-none text-primary">
+                          <span className="font-headline-md text-[14px]">Why this priority?</span>
+                          <span aria-hidden className="leading-none text-[20px] text-on-surface-variant transition-transform group-open:rotate-180">🔽</span>
+                        </summary>
+                        <div className="mt-md pt-sm hairline-t">
+                          <p className="font-body-md text-[13px] text-primary mb-sm">
+                            Gemini assessed this report as <strong>{getPriority(sev).toUpperCase()}</strong> priority because:
+                          </p>
+                          <ul className="flex flex-col gap-1">
+                            <li className="font-body-md text-[12px] text-on-surface-variant">
+                              ✓ {CATEGORY_LABELS[result.analysis.category]} detected
+                            </li>
+                            {result.proximityContext.map((p, i) => (
+                              <li key={i} className="font-body-md text-[12px] text-on-surface-variant">
+                                ✓ Near {p.name} ({p.distanceM}m){riskNote[p.type] ? ` — ${riskNote[p.type]}` : ''}
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="font-body-md text-[12px] text-on-surface-variant mt-sm">
+                            Confidence: {Math.round(result.agentReasoning.confidence * 100)}%
+                          </p>
+                        </div>
+                      </details>
+                    </>
+                  );
+                })()}
+
+              </div>
+            </details>
             {/* Drafted notice — full text, with copy (manual-send model) */}
             <div className="animate-fade-up delay-300 mt-lg text-left">
               <div className="flex items-center justify-between mb-sm">
@@ -1051,7 +1091,7 @@ function ReportContent() {
                   onClick={copyNotice}
                   className="flex items-center gap-1.5 font-headline-md text-[12px] text-primary bg-surface hairline-all rounded-full px-md py-1.5 active:scale-[0.98] transition-transform"
                 >
-                  <span className="material-symbols-outlined text-[16px]">{copied ? 'check' : 'content_copy'}</span>
+                  <span aria-hidden className="leading-none text-[16px]">{copied ? '✅' : '📋'}</span>
                   {copied ? 'Copied' : 'Copy notice'}
                 </button>
               </div>
@@ -1067,16 +1107,57 @@ function ReportContent() {
               onClick={() => setPhase('confirm')}
               className="animate-fade-up delay-300 w-full h-12 mt-md flex items-center justify-center gap-2 rounded-full bg-surface hairline-all text-primary font-headline-md text-[14px] active:scale-[0.98] transition-transform"
             >
-              <span className="material-symbols-outlined text-[18px]">edit</span>
+              <span aria-hidden className="leading-none text-[18px]">✏️</span>
               Edit details before sending
             </button>
 
-            {/* Primary action — citizen sends the notice from their own Gmail */}
+            {/* Recipient picker: the student chooses which warden / office gets the mail */}
+            <div className="animate-fade-up delay-300 mt-md text-left bg-surface hairline-all rounded-xl p-md">
+              <label htmlFor="recipient" className="font-label-caps text-label-caps uppercase text-on-surface-variant">Send to</label>
+              {aiRecipient && (
+                <div className="flex items-center justify-between gap-2 mt-1 mb-1 rounded-lg bg-surface-container-lowest hairline-all px-sm py-2">
+                  <p className="font-body-md text-[12px] text-on-surface-variant">
+                    ✨ AI suggests <strong className="text-primary">{aiRecipient.label}</strong>
+                    {' '}for {CATEGORY_LABELS[result.analysis.category].toLowerCase()} at {result.route.ward}
+                  </p>
+                  {recipientId !== aiRecipientId && (
+                    <button
+                      type="button"
+                      onClick={() => setRecipientId(aiRecipientId)}
+                      className="shrink-0 h-8 px-3 rounded-full bg-primary text-on-primary font-headline-md text-[12px] active:scale-[0.97] transition-transform"
+                    >
+                      Use
+                    </button>
+                  )}
+                </div>
+              )}
+              <select
+                id="recipient"
+                value={recipientId}
+                onChange={(e) => setRecipientId(e.target.value)}
+                className="w-full h-12 px-md rounded-xl bg-surface-container-lowest hairline-all text-primary font-body-md mt-1 focus:outline-none focus:border-primary"
+              >
+                <option value="" disabled>Choose who to email</option>
+                {RECIPIENT_GROUPS.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.options.map((o) => <option key={o.id} value={o.id}>{o.id === aiRecipientId ? `✨ ${o.label} (AI pick)` : o.label}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              <p className="font-body-md text-[12px] text-on-surface-variant mt-2 break-all">
+                {selectedRecipient
+                  ? <>To: <span className="font-stats-tabular text-primary">{selectedRecipient.email}</span></>
+                  : 'Pick a recipient to open the email.'}
+              </p>
+            </div>
+
+            {/* Primary action: the student sends the notice from their own Gmail */}
             <button
               onClick={openInGmail}
-              className="animate-fade-up delay-300 w-full h-12 mt-sm flex items-center justify-center gap-2 rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
+              disabled={!selectedRecipient}
+              className="disabled:opacity-40 animate-fade-up delay-300 w-full h-12 mt-sm flex items-center justify-center gap-2 rounded-full bg-primary text-on-primary font-headline-md text-[15px] active:scale-[0.98] transition-transform"
             >
-              <span className="material-symbols-outlined text-[20px]">mail</span>
+              <span aria-hidden className="leading-none text-[20px]">📧</span>
               {noticeSent ? 'Reopen in Gmail' : 'Open in Gmail to Send'}
             </button>
             <p className="mt-2 font-body-md text-[12px] text-on-surface-variant text-center">
@@ -1093,7 +1174,7 @@ function ReportContent() {
               href="/escalate"
               className="mt-md w-full h-12 flex items-center justify-center gap-2 rounded-full bg-surface hairline-all text-primary font-headline-md text-[14px] active:scale-[0.98] transition-transform"
             >
-              <span className="material-symbols-outlined text-[20px]">gavel</span>
+              <span aria-hidden className="leading-none text-[20px]">⚖️</span>
               View free escalation templates
             </Link>
             <p className="mt-1 font-body-md text-[12px] text-on-surface-variant text-center">

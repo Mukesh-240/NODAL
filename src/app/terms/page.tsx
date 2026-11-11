@@ -2,19 +2,19 @@ import type { Metadata } from 'next';
 import { LegalPage, LegalSection } from '@/components/LegalPage';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — NODAL',
-  description: 'The terms under which you may use NODAL to report campus maintenance issues.',
+  title: 'Terms of Service — RESOLVEX',
+  description: 'The terms under which you may use RESOLVEX to report campus maintenance issues.',
 };
 
 export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Service"
-      intro="By using NODAL, you agree to these terms. They are written to be readable, not to trick you."
+      intro="By using RESOLVEX, you agree to these terms. They are written to be readable, not to trick you."
       updated="28 June 2026"
     >
-      <LegalSection heading="What NODAL does">
-        <p>NODAL helps students and campus residents document facility maintenance issues, classifies them with AI, routes them to the appropriate college department, and drafts formal maintenance requisitions. NODAL prepares the notice and a prefilled compose; <strong>you</strong> send it from your own email account. NODAL does not dispatch notices automatically on your behalf — the only email it sends is an optional confirmation copy to you.</p>
+      <LegalSection heading="What RESOLVEX does">
+        <p>RESOLVEX helps students and campus residents document facility maintenance issues, classifies them with AI, routes them to the appropriate college department, and drafts formal maintenance requisitions. RESOLVEX prepares the notice and a prefilled compose; <strong>you</strong> send it from your own email account. RESOLVEX does not dispatch notices automatically on your behalf — the only email it sends is an optional confirmation copy to you.</p>
       </LegalSection>
 
       <LegalSection heading="Your responsibilities">
@@ -26,7 +26,7 @@ export default function TermsPage() {
       </LegalSection>
 
       <LegalSection heading="No guarantee of institutional action">
-        <p>NODAL is an independent student utility tool. We draft and help you dispatch requisitions, but cannot guarantee the resolution timeline of college maintenance cells. Statuses such as &quot;Notice Sent&quot; reflect your action, not confirmed repair completion.</p>
+        <p>RESOLVEX is an independent student utility tool. We draft and help you dispatch requisitions, but cannot guarantee the resolution timeline of college maintenance cells. Statuses such as &quot;Notice Sent&quot; reflect your action, not confirmed repair completion.</p>
       </LegalSection>
 
       <LegalSection heading="AI-generated content">
@@ -34,7 +34,7 @@ export default function TermsPage() {
       </LegalSection>
 
       <LegalSection heading="Limitation of liability">
-        <p>NODAL is provided &quot;as is&quot;, without warranties. To the extent permitted by law, we are not liable for any loss arising from your use of the platform or from actions (or inaction) by third parties or authorities.</p>
+        <p>RESOLVEX is provided &quot;as is&quot;, without warranties. To the extent permitted by law, we are not liable for any loss arising from your use of the platform or from actions (or inaction) by third parties or authorities.</p>
       </LegalSection>
 
       <LegalSection heading="Governing law">

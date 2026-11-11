@@ -36,7 +36,7 @@ function ImpactContent() {
     <div className="min-h-screen bg-background pb-28">
       <header className="sticky top-0 z-40 flex items-center justify-between px-gutter py-md bg-surface hairline-b">
         <Link href="/" className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
-          <span className="material-symbols-outlined">arrow_back</span>
+          <span aria-hidden className="leading-none ">⬅️</span>
         </Link>
         <h1 className="font-headline-md text-[18px] text-primary">Community Impact</h1>
         <div className="w-10" />
@@ -78,7 +78,7 @@ function ImpactContent() {
                 style={{ animationDelay: `${i * 60}ms` }}
               >
                 <div className="flex items-center gap-md flex-1">
-                  <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                  <span aria-hidden className="leading-none text-primary">✅</span>
                   <div>
                     <p className="font-headline-md text-[14px] text-primary">{win.category}</p>
                     <p className="font-body-md text-[12px] text-on-surface-variant">{win.location}</p>

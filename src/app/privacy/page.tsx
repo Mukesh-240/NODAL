@@ -2,15 +2,15 @@ import type { Metadata } from 'next';
 import { LegalPage, LegalSection } from '@/components/LegalPage';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — NODAL',
-  description: 'How NODAL collects, uses, and protects the data you share when reporting a campus maintenance issue.',
+  title: 'Privacy Policy — RESOLVEX',
+  description: 'How RESOLVEX collects, uses, and protects the data you share when reporting a campus maintenance issue.',
 };
 
 export default function PrivacyPage() {
   return (
     <LegalPage
       title="Privacy Policy"
-      intro="NODAL is a campus maintenance reporting tool. We collect the minimum needed to route your report to the right department — and nothing more."
+      intro="RESOLVEX is a campus maintenance reporting tool. We collect the minimum needed to route your report to the right department — and nothing more."
       updated="28 June 2026"
     >
       <LegalSection heading="What we collect">
@@ -24,11 +24,11 @@ export default function PrivacyPage() {
 
       <LegalSection heading="How we use it">
         <p>Your photo and location are processed to identify the issue, determine its severity, and draft formal notices (a complaint, an RTI application, and — where relevant — an accessibility grievance). We do not sell your data or use it for advertising.</p>
-        <p>NODAL does <strong>not</strong> email these notices to the administration on your behalf. It prepares the notice and a prefilled Gmail/email compose, and <strong>you</strong> send it from your own student account. The only email NODAL sends through our mail provider (Resend) is an optional confirmation copy to you — and only if you provided an email address.</p>
+        <p>RESOLVEX does <strong>not</strong> email these notices to the administration on your behalf. It prepares the notice and a prefilled Gmail/email compose, and <strong>you</strong> send it from your own student account. The only email RESOLVEX sends through our mail provider (Resend) is an optional confirmation copy to you — and only if you provided an email address.</p>
       </LegalSection>
 
       <LegalSection heading="Third-party services">
-        <p>To work, NODAL shares the relevant data with:</p>
+        <p>To work, RESOLVEX shares the relevant data with:</p>
         <ul>
           <li><strong>Google Gemini</strong> — analyses your photo to classify the issue.</li>
           <li><strong>Supabase</strong> — stores reports and images.</li>

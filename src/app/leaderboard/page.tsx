@@ -107,7 +107,7 @@ function LeaderboardContent() {
     <div className="min-h-screen bg-background pt-xl pb-28 px-gutter">
       <header className="max-w-[560px] mx-auto mb-md">
         <h1 className="font-headline-lg text-headline-lg text-primary tracking-tighter flex items-center gap-2">
-          <span className="material-symbols-outlined">leaderboard</span>
+          <span aria-hidden className="leading-none ">🏆</span>
           Campus Leaderboard
         </h1>
         <p className="font-body-md text-body-md text-on-surface-variant mt-xs">

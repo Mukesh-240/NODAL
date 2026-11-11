@@ -180,7 +180,7 @@ function MyReportsContent() {
 
         {!loading && !error && issues.length === 0 && (
           <div className="text-center py-16 animate-fade-up">
-            <span className="material-symbols-outlined text-[56px] text-on-surface-variant opacity-40">assignment</span>
+            <span aria-hidden className="leading-none text-[56px] text-on-surface-variant opacity-40">📋</span>
             <p className="font-headline-md text-[17px] text-primary mt-3">No reports yet</p>
             <p className="font-body-md text-[14px] text-on-surface-variant mt-1 mb-6">
               Snap a photo of a campus issue and we&apos;ll route it to the right department.
@@ -228,7 +228,7 @@ function MyReportsContent() {
                             <img src={issue.image_url} alt={issue.description} className="w-full h-full object-cover" loading="lazy" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <span className="material-symbols-outlined text-on-surface-variant">image</span>
+                              <span aria-hidden className="leading-none text-on-surface-variant">🖼️</span>
                             </div>
                           )}
                           <span
@@ -259,8 +259,8 @@ function MyReportsContent() {
                             className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-mono font-semibold text-on-surface-variant hover:text-primary transition-colors"
                             title="Tap to copy tracking code"
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>
-                              {copied === issue.tracking_code ? 'check' : 'content_copy'}
+                            <span aria-hidden className="leading-none " style={{ fontSize: '13px' }}>
+                              {copied === issue.tracking_code ? '✅' : '📋'}
                             </span>
                             {copied === issue.tracking_code ? 'Copied!' : issue.tracking_code}
                           </button>
@@ -274,7 +274,7 @@ function MyReportsContent() {
                           href={'/track?code=' + encodeURIComponent(issue.tracking_code)}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant hover:text-primary text-xs font-semibold transition-colors"
                         >
-                          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>open_in_new</span>
+                          <span aria-hidden className="leading-none " style={{ fontSize: '14px' }}>↗️</span>
                           Details
                         </Link>
                         <div className="flex-1" />

@@ -30,14 +30,14 @@ const BLOCKS: Record<string, string[]> = {
 };
 
 const CATEGORY_CHIPS = [
-  { key: 'all', label: 'All Issues', icon: 'grid_view' },
-  { key: 'hostel_maintenance', label: 'Hostel', icon: 'bed' },
-  { key: 'electrical_ac', label: 'Electrical & AC', icon: 'electrical_services' },
-  { key: 'sanitation_washroom', label: 'Washroom', icon: 'plumbing' },
-  { key: 'wifi_it_infra', label: 'Wi-Fi & IT', icon: 'wifi' },
-  { key: 'mess_canteen', label: 'Mess & Food', icon: 'restaurant' },
-  { key: 'classroom_lab', label: 'Classrooms', icon: 'school' },
-  { key: 'campus_safety_roads', label: 'Safety', icon: 'security' },
+  { key: 'all', label: 'All Issues', icon: '🗂️' },
+  { key: 'hostel_maintenance', label: 'Hostel', icon: '🛏️' },
+  { key: 'electrical_ac', label: 'Electrical & AC', icon: '⚡' },
+  { key: 'sanitation_washroom', label: 'Washroom', icon: '🚿' },
+  { key: 'wifi_it_infra', label: 'Wi-Fi & IT', icon: '📶' },
+  { key: 'mess_canteen', label: 'Mess & Food', icon: '🍽️' },
+  { key: 'classroom_lab', label: 'Classrooms', icon: '🏫' },
+  { key: 'campus_safety_roads', label: 'Safety', icon: '🛡️' },
 ];
 
 const STATUS_CHIPS = [
@@ -93,7 +93,7 @@ function timeAgo(iso: string): string {
 function buildWhatsAppText(issue: IssueWithMeta): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const lines = [
-    '*NODAL Campus Issue #' + issue.tracking_code + '*',
+    '*RESOLVEX Campus Issue #' + issue.tracking_code + '*',
     'Location: ' + issue.ward + ', ' + issue.city,
     'Category: ' + CATEGORY_LABELS[issue.category],
     'Severity: ' + issue.severity + '/10',
@@ -215,7 +215,7 @@ function IssueCard({ issue, sessionId, onUpvote, onCommentToggle, expandedId }: 
             </div>
             <p className="text-sm font-medium text-on-surface line-clamp-2 leading-snug">{issue.description}</p>
             <div className="flex items-center gap-1.5 mt-1.5 text-xs text-on-surface-variant">
-              <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>location_on</span>
+              <span aria-hidden className="leading-none " style={{ fontSize: '13px' }}>📍</span>
               <span>{issue.ward}</span>
               <span className="opacity-40">·</span>
               <span>{timeAgo(issue.created_at)}</span>
@@ -227,7 +227,7 @@ function IssueCard({ issue, sessionId, onUpvote, onCommentToggle, expandedId }: 
           <button onClick={() => onUpvote(issue.id)}
             className={'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 active:scale-95 ' +
               (issue.user_upvoted ? 'bg-primary text-on-primary shadow-sm' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high')}>
-            <span className="material-symbols-outlined" style={{ fontSize: '16px', fontVariationSettings: issue.user_upvoted ? "'FILL' 1" : "'FILL' 0" }}>thumb_up</span>
+            <span aria-hidden className="leading-none " style={{ fontSize: '16px', fontVariationSettings: issue.user_upvoted ? "'FILL' 1" : "'FILL' 0" }}>👍</span>
             <span>{issue.upvote_count}</span>
             {!issue.user_upvoted && <span className="text-xs opacity-70">Me Too</span>}
           </button>
@@ -235,7 +235,7 @@ function IssueCard({ issue, sessionId, onUpvote, onCommentToggle, expandedId }: 
           <button onClick={() => onCommentToggle(issue.id)}
             className={'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 active:scale-95 ' +
               (isExpanded ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high')}>
-            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>chat_bubble</span>
+            <span aria-hidden className="leading-none " style={{ fontSize: '16px' }}>💬</span>
             <span>{issue.comment_count}</span>
           </button>
 
@@ -252,7 +252,7 @@ function IssueCard({ issue, sessionId, onUpvote, onCommentToggle, expandedId }: 
 
           <Link href={'/track?id=' + issue.id}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-surface-container text-on-surface-variant hover:text-primary hover:bg-primary-fixed transition-colors duration-200 text-xs font-semibold active:scale-95">
-            <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>open_in_new</span>
+            <span aria-hidden className="leading-none " style={{ fontSize: '13px' }}>↗️</span>
             Track
           </Link>
         </div>
@@ -356,7 +356,7 @@ export default function CommunityPage() {
           style={{ background: 'radial-gradient(circle, #06b6d4 0%, transparent 70%)' }} />
         <div className="relative max-w-2xl mx-auto">
           <div className="flex items-center gap-2 mb-1">
-            <span className="material-symbols-outlined text-white/80" style={{ fontSize: '18px' }}>groups</span>
+            <span aria-hidden className="leading-none text-white/80" style={{ fontSize: '18px' }}>👥</span>
             <span className="text-white/60 text-xs font-medium tracking-widest uppercase">VIT-AP Campus</span>
           </div>
           <h1 className="text-2xl font-bold text-white mb-1">Community Board</h1>
@@ -382,13 +382,13 @@ export default function CommunityPage() {
       <div className="max-w-2xl mx-auto px-gutter space-y-4 mt-4">
         {/* Search */}
         <div className="relative">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" style={{ fontSize: '18px' }}>search</span>
+          <span aria-hidden className="leading-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" style={{ fontSize: '18px' }}>🔍</span>
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Search issues, locations, descriptions…"
             className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-outline-variant bg-white text-sm focus:outline-none focus:border-primary shadow-sm" />
           {search && (
             <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface">
-              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+              <span aria-hidden className="leading-none " style={{ fontSize: '16px' }}>✖️</span>
             </button>
           )}
         </div>
@@ -423,7 +423,7 @@ export default function CommunityPage() {
             <button key={key} onClick={() => setCategory(key)}
               className={'flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-150 active:scale-95 ' +
                 (category === key ? 'bg-primary text-on-primary shadow-sm' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high border border-outline-variant')}>
-              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{icon}</span>
+              <span aria-hidden className="leading-none " style={{ fontSize: '14px' }}>{icon}</span>
               {label}
             </button>
           ))}
@@ -450,7 +450,7 @@ export default function CommunityPage() {
         {/* Duplicate banner */}
         {topDuplicate && !loading && (
           <div className="rounded-2xl p-4 flex gap-3 items-start" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
-            <span className="material-symbols-outlined" style={{ color: '#f59e0b', fontSize: '20px', flexShrink: 0 }}>info</span>
+            <span aria-hidden className="leading-none " style={{ color: '#f59e0b', fontSize: '20px', flexShrink: 0 }}>ℹ️</span>
             <div className="flex-1">
               <p className="text-sm font-semibold" style={{ color: '#92400e' }}>Already reported — add your voice instead</p>
               <p className="text-xs mt-0.5 line-clamp-2" style={{ color: '#b45309' }}>{topDuplicate.description}</p>
@@ -469,13 +469,13 @@ export default function CommunityPage() {
           <div className="space-y-3">{[1,2,3].map((k) => <SkeletonCard key={k} />)}</div>
         ) : issues.length === 0 ? (
           <div className="text-center py-16 space-y-3">
-            <span className="material-symbols-outlined text-on-surface-variant/40" style={{ fontSize: '48px' }}>inbox</span>
+            <span aria-hidden className="leading-none text-on-surface-variant/40" style={{ fontSize: '48px' }}>📭</span>
             <p className="text-on-surface-variant font-medium">No issues found</p>
             <p className="text-sm" style={{ color: 'rgba(70,70,74,0.7)' }}>
               {search ? 'Try different search terms or clear filters.' : 'Be the first to report a campus issue!'}
             </p>
             <Link href="/" className="inline-flex items-center gap-2 mt-2 px-5 py-2.5 rounded-full bg-primary text-on-primary text-sm font-semibold active:scale-95 transition-all">
-              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add_a_photo</span>
+              <span aria-hidden className="leading-none " style={{ fontSize: '18px' }}>📸</span>
               Report an Issue
             </Link>
           </div>
@@ -492,7 +492,7 @@ export default function CommunityPage() {
           <div className="text-center py-6">
             <p className="text-xs text-on-surface-variant mb-3">Don't see your issue? Report it with a photo.</p>
             <Link href="/" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-on-primary text-sm font-semibold active:scale-95 transition-all shadow-sm">
-              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add_a_photo</span>
+              <span aria-hidden className="leading-none " style={{ fontSize: '18px' }}>📸</span>
               Report a New Issue
             </Link>
           </div>

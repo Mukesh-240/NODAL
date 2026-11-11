@@ -1,5 +1,5 @@
-// ─── NODAL /api/analyze ───────────────────────────────────────────────────────
-// The heart of NODAL. Orchestrates the complete 5-tool agentic loop.
+// ─── RESOLVEX /api/analyze ───────────────────────────────────────────────────────
+// The heart of RESOLVEX. Orchestrates the complete 5-tool agentic loop.
 //
 // Flow:
 //   POST /api/analyze
@@ -42,6 +42,8 @@ const AnalyzeRequestSchema = z.object({
     .max(254, 'Email too long')
     .optional(),
   citizenName: z.string().max(120, 'Name too long').optional(),
+  // The student's own account of the problem — drives the analysis context and the letter.
+  problemDescription: z.string().trim().min(10, 'Please describe the problem').max(600, 'Description too long'),
   reporterSession: z.string().uuid('Invalid session ID'),
   // Student-confirmed routing — optional overrides for campus zone / block.
   cityOverride: z.enum(["Men's Hostels (MH)", "Ladies Hostels (LH)", "Academic Blocks", "Campus Grounds"]).optional(),
@@ -132,13 +134,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { imageBase64, mimeType, frameBase64, gpsLat, gpsLng, citizenEmail, citizenName, reporterSession, cityOverride, wardOverride } = body;
+  const { imageBase64, mimeType, frameBase64, gpsLat, gpsLng, citizenEmail, citizenName, problemDescription, reporterSession, cityOverride, wardOverride } = body;
   const isVideo = isVideoMime(mimeType);
 
   // ── GPS Validation ──────────────────────────────────────────────────────────
   if (!isInIndia(gpsLat, gpsLng)) {
     return NextResponse.json(
-      { success: false, error: 'NODAL currently covers Indian cities only. Please ensure location access is enabled.' },
+      { success: false, error: 'RESOLVEX currently covers Indian cities only. Please ensure location access is enabled.' },
       { status: 400 }
     );
   }
@@ -154,7 +156,7 @@ export async function POST(request: NextRequest) {
   // requests don't burn the cap.
   if (!withinGlobalCap()) {
     return NextResponse.json(
-      { success: false, error: 'NODAL has reached today’s capacity. Please try again tomorrow.' },
+      { success: false, error: 'RESOLVEX has reached today’s capacity. Please try again tomorrow.' },
       { status: 429 }
     );
   }
@@ -180,14 +182,14 @@ export async function POST(request: NextRequest) {
       // Gemini native video understanding. If it fails, fall back to the client-
       // extracted still frame (treated as an image) so the report still goes through.
       try {
-        analysis = await analyzeImage(imageBase64, mimeType, wardOverride, cityOverride, nearby?.contextString);
+        analysis = await analyzeImage(imageBase64, mimeType, wardOverride, cityOverride, nearby?.contextString, problemDescription);
       } catch (vErr) {
         if (!frameBase64) throw vErr;
         console.warn('[analyze_image] video analysis failed — falling back to extracted frame:', (vErr as Error)?.message);
-        analysis = await analyzeImage(frameBase64, 'image/jpeg', wardOverride, cityOverride, nearby?.contextString);
+        analysis = await analyzeImage(frameBase64, 'image/jpeg', wardOverride, cityOverride, nearby?.contextString, problemDescription);
       }
     } else {
-      analysis = await analyzeImage(imageBase64, mimeType, wardOverride, cityOverride, nearby?.contextString);
+      analysis = await analyzeImage(imageBase64, mimeType, wardOverride, cityOverride, nearby?.contextString, problemDescription);
     }
     logTool('analyze_image', 'done', Date.now() - t1);
 
@@ -245,7 +247,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Human-readable NODAL Tracking Ref — generated before pattern detection &
+  // Human-readable RESOLVEX Tracking Ref — generated before pattern detection &
   // drafting so the documents cite it and we can exclude it from the pattern query.
   // Carries the category, zone, severity band and date so the code itself is
   // self-describing (see generateTrackingCode for the field layout).
@@ -284,7 +286,7 @@ export async function POST(request: NextRequest) {
   const legalHint = appliedActs.map((a) => `${a.act} ${a.section}`).join(', ');
 
   // Agent transparency — which statutes were selected + why the chain escalated.
-  // NODAL prepares everything; the citizen sends (human-in-the-loop dispatch model).
+  // RESOLVEX prepares everything; the citizen sends (human-in-the-loop dispatch model).
   // legalActs (deterministic) is the guaranteed backstop; legalReasoning is the AI layer.
   const legalActs = selectApplicableLegalActs(analysis, route.city);
   const escalationReasoning: string[] = ['Ward officer CC: standard for all reports'];
@@ -326,6 +328,7 @@ export async function POST(request: NextRequest) {
       route,
       reportedAt: new Date().toISOString(),
       legalHint,
+      problemDescription,
     });
     logTool('draft_dispatch', 'done', Date.now() - t3);
   } catch (err) {
@@ -335,9 +338,9 @@ export async function POST(request: NextRequest) {
     dispatch = {
       subject: `Urgent Remedial Action Required for Civic Issue in ${route.ward}, ${route.city}`,
       emailNotice: `A civic issue (${analysis.category}) has been reported at ${route.ward}, ${route.city} with severity ${analysis.severity}/10. Please investigate and take necessary remedial action within ${route.department.avgResolutionDays} working days.${buildLegalFooter(analysis, route, trackingCode)}`,
-      rtiApplication: `RTI Request under Section 6(1) regarding the civic issue reported at ${route.ward}, ${route.city} (NODAL Tracking Ref: ${trackingCode}). Please provide the status of contract work, budget, and engineers assigned for this street.`,
+      rtiApplication: `RTI Request under Section 6(1) regarding the civic issue reported at ${route.ward}, ${route.city} (RESOLVEX Tracking Ref: ${trackingCode}). Please provide the status of contract work, budget, and engineers assigned for this street.`,
       rpwdComplaint: analysis.rpwdViolation
-        ? `RPWD Act 2016 Section 40 accessibility grievance regarding the barrier reported at ${route.ward}, ${route.city} (NODAL Tracking Ref: ${trackingCode}). Under the law, the authority has a 30-day statutory response deadline.`
+        ? `RPWD Act 2016 Section 40 accessibility grievance regarding the barrier reported at ${route.ward}, ${route.city} (RESOLVEX Tracking Ref: ${trackingCode}). Under the law, the authority has a 30-day statutory response deadline.`
         : '',
     };
   }
@@ -424,7 +427,7 @@ export async function POST(request: NextRequest) {
   // ════════════════════════════════════════════════════════════════════════════
   // TOOL 5: prepare_dispatch_package — confirmation to the CITIZEN only
   // ════════════════════════════════════════════════════════════════════════════
-  // Human-in-the-loop by design: NODAL prepares the full notice + the Gmail/mailto
+  // Human-in-the-loop by design: RESOLVEX prepares the full notice + the Gmail/mailto
   // compose deep-link (built client-side on the confirmation screen) and the
   // citizen sends it from their OWN account. The citizen's name is on a formal
   // legal notice, so the send is theirs to make — that one tap is the legal
@@ -463,7 +466,7 @@ export async function POST(request: NextRequest) {
 
   // ── Success Response ────────────────────────────────────────────────────────
   const totalTime = Date.now() - startTime;
-  console.log(`✅ [NODAL] Full 6-tool agent loop completed in ${totalTime}ms for issue ${issueId}`);
+  console.log(`✅ [RESOLVEX] Full 6-tool agent loop completed in ${totalTime}ms for issue ${issueId}`);
 
   const response: AnalyzeResponse = {
     success: true,

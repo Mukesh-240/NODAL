@@ -1,4 +1,4 @@
-// ─── NODAL VIT-AP Campus Routing Matrix ─────────────────────────────────────
+// ─── RESOLVEX VIT-AP Campus Routing Matrix ─────────────────────────────────────
 // Real faculty and department directory extracted from VIT-AP administration directory.
 // Maps [VIT-AP Campus Zone][Category] → exact Faculty Warden / Department Officer.
 
@@ -274,7 +274,7 @@ export async function routeIssue(
 //      │    │   │  └──────────────── severity band: A=1-3, B=4-6, C=7-10
 //      │    │   └─────────────────── zone: MH / LH / ACAD / CAMP
 //      │    └─────────────────────── category: WIFI / SANI / ELEC / …
-//      └──────────────────────────── NODAL
+//      └──────────────────────────── RESOLVEX
 //
 // Read aloud it tells a warden everything they need: what, where, how urgent,
 // when. Legacy 5-part codes (NDL-MH-0427-K7QP) remain valid — this only ADDS

@@ -17,7 +17,7 @@ export class ErrorBoundary extends React.Component<Props> {
       return (
         <div className="w-full h-screen flex items-center justify-center">
           <div className="text-center">
-            <span className="material-symbols-outlined text-[48px] text-red-500">error</span>
+            <span aria-hidden className="leading-none text-[48px] text-red-500">⚠️</span>
             <p className="font-medium text-zinc-900 mt-4">Failed to load this section</p>
             <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-black text-white rounded-lg">
               Retry

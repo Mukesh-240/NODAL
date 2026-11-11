@@ -1,4 +1,4 @@
-// ─── NODAL VIT-AP Campus Recipient Chain ────────────────────────────────────
+// ─── RESOLVEX VIT-AP Campus Recipient Chain ────────────────────────────────────
 // Escalates severity to real authority roles at VIT-AP University:
 //
 //   Routine (Low/Medium) → Assigned Warden / Department Lead

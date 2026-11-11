@@ -1,4 +1,4 @@
-// ─── NODAL Places Proximity ───────────────────────────────────────────────────
+// ─── RESOLVEX Places Proximity ───────────────────────────────────────────────────
 // Tool 1.5 (optional): given the issue's GPS, find civic-critical facilities
 // (hospital/school/bus_station/police/fire_station) within 500m via the Google
 // Places API (New) and turn that into (a) a prompt context string and (b) a
@@ -103,8 +103,8 @@ export async function getNearbyContext(lat: number, lng: number): Promise<Nearby
   }
 }
 
-// Deterministic severity boost on NODAL's 1–10 scale. The original spec used a
-// 0–100 scale (+20 hospital / +15 school / +10 bus, cap 100); NODAL stores
+// Deterministic severity boost on RESOLVEX's 1–10 scale. The original spec used a
+// 0–100 scale (+20 hospital / +15 school / +10 bus, cap 100); RESOLVEX stores
 // severity 1–10 (DB CHECK + UI thresholds), so the boost is scaled ÷10.
 // ponytail: emergency services (police/fire) are in the context string but not
 // the numeric boost — add a rung here if they should bump severity too.

@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import { LegalPage, LegalSection } from '@/components/LegalPage';
 
 export const metadata: Metadata = {
-  title: 'Data Deletion — NODAL',
-  description: 'How to request deletion of the data associated with your NODAL reports.',
+  title: 'Data Deletion — RESOLVEX',
+  description: 'How to request deletion of the data associated with your RESOLVEX reports.',
 };
 
 export default function DataDeletionPage() {
@@ -27,15 +27,15 @@ export default function DataDeletionPage() {
       </LegalSection>
 
       <LegalSection heading="Or ask us">
-        <p>Prefer email? Write to <a href="mailto:mukesh.r240108@gmail.com?subject=NODAL%20Data%20Deletion%20Request">mukesh.r240108@gmail.com</a> with the subject &quot;Data Deletion Request&quot;. Include your <strong>tracking reference(s)</strong> or the email address you used, so we can locate your records.</p>
+        <p>Prefer email? Write to <a href="mailto:mukesh.r240108@gmail.com?subject=RESOLVEX%20Data%20Deletion%20Request">mukesh.r240108@gmail.com</a> with the subject &quot;Data Deletion Request&quot;. Include your <strong>tracking reference(s)</strong> or the email address you used, so we can locate your records.</p>
       </LegalSection>
 
       <LegalSection heading="Clear your local data instantly">
-        <p>Your anonymous session ID lives in your browser. Clearing your browser&apos;s site data for NODAL removes it immediately and disconnects this device from your past reports.</p>
+        <p>Your anonymous session ID lives in your browser. Clearing your browser&apos;s site data for RESOLVEX removes it immediately and disconnects this device from your past reports.</p>
       </LegalSection>
 
       <LegalSection heading="Timeline">
-        <p>We process deletion requests within <strong>30 days</strong>. Note that requisitions already dispatched to a college department by you, via your own email, are outside NODAL&apos;s control and cannot be recalled by us.</p>
+        <p>We process deletion requests within <strong>30 days</strong>. Note that requisitions already dispatched to a college department by you, via your own email, are outside RESOLVEX&apos;s control and cannot be recalled by us.</p>
       </LegalSection>
     </LegalPage>
   );

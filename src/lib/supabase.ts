@@ -1,4 +1,4 @@
-// ─── NODAL Supabase Client ────────────────────────────────────────────────────
+// ─── RESOLVEX Supabase Client ────────────────────────────────────────────────────
 // Initializes Supabase client and exports typed database helpers.
 //
 // Open Source Attribution:
