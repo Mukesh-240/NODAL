@@ -1,7 +1,7 @@
 // Recipient picker data: the VIT-AP directory grouped the way a student thinks
 // about it (which hostel block / which office), so they choose who gets the mail.
 // Client-safe — only reads the static directory.
-import { VIT_AP_DIRECTORY as D } from '@/lib/routingMatrix';
+import { VIT_AP_DIRECTORY as D, resolveBlockWarden } from '@/lib/routingMatrix';
 
 type DirectoryKey = keyof typeof D;
 
@@ -65,11 +65,15 @@ export const PROBLEM_KIND_LABEL: Record<ProblemKind, string> = {
   campus: 'Campus issue',
 };
 
-const ESCALATION: Record<ProblemKind, DirectoryKey[]> = {
-  academic: ['deanAcademic', 'viceChancellor', 'registrarOffice'],
-  hostel: ['viceChancellor', 'registrarOffice'],
-  campus: ['viceChancellor', 'chancellor', 'registrarOffice'],
-};
+// Hostel chains start with that hostel's Chief Warden (Men's or Ladies').
+function escalationKeys(kind: ProblemKind, zone: string): DirectoryKey[] {
+  if (kind === 'academic') return ['deanAcademic', 'viceChancellor', 'registrarOffice'];
+  if (kind === 'hostel') {
+    const chief: DirectoryKey = zone.includes('Ladies') ? 'chiefWardenLH' : 'chiefWardenMH';
+    return [chief, 'viceChancellor', 'registrarOffice'];
+  }
+  return ['viceChancellor', 'chancellor', 'registrarOffice'];
+}
 
 export function problemKind(zone: string, category: string): ProblemKind {
   if (zone.includes('Hostels') || category === 'hostel_maintenance' || category === 'mess_canteen') return 'hostel';
@@ -77,10 +81,21 @@ export function problemKind(zone: string, category: string): ProblemKind {
   return 'campus';
 }
 
+// Suggested To: for hostel problems, the warden of that exact block (MH-03 → its
+// warden); otherwise the department the router picked.
+export function suggestedRecipientId(kind: ProblemKind, ward: string, departmentName: string): string {
+  if (kind === 'hostel') {
+    const warden = resolveBlockWarden(ward);
+    const id = warden ? defaultRecipientId(warden.name) : '';
+    if (id) return id;
+  }
+  return defaultRecipientId(departmentName);
+}
+
 // Escalation list for this problem, minus whoever is already the To recipient.
-export function escalationCc(kind: ProblemKind, toId: string): RecipientOption[] {
+export function escalationCc(kind: ProblemKind, toId: string, zone: string): RecipientOption[] {
   const toEmail = findRecipient(toId)?.email;
-  return ESCALATION[kind]
+  return escalationKeys(kind, zone)
     .filter((id) => id !== toId)
     .map((id) => findRecipient(id))
     .filter((o): o is RecipientOption => !!o && o.email !== toEmail);

@@ -17,7 +17,7 @@ import {
 import { getSession } from '@/lib/session';
 import { detectCityFromGPS, cityCenter } from '@/lib/routingMatrix';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { RECIPIENT_GROUPS, findRecipient, defaultRecipientId, escalationCc, problemKind, PROBLEM_KIND_LABEL } from '@/lib/recipientGroups';
+import { RECIPIENT_GROUPS, findRecipient, suggestedRecipientId, escalationCc, problemKind, PROBLEM_KIND_LABEL } from '@/lib/recipientGroups';
 
 const CITIES: SupportedCity[] = [
   "Men's Hostels (MH)",
@@ -226,12 +226,12 @@ function ReportContent() {
   const [step, setStep] = useState(0);
   const [error, setError] = useState('');
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
-  // The recipient the router (driven by the AI's category) picked for this report.
-  const aiRecipientId = result ? defaultRecipientId(result.route.department.name) : '';
-  const aiRecipient = findRecipient(aiRecipientId);
   // Escalation copies depend on the kind of problem (Registrar is always last).
   const kind = result ? problemKind(result.route.city, result.analysis.category) : 'campus';
-  const ccList = escalationCc(kind, recipientId);
+  // Suggested To: the block's own warden for hostel problems, else the routed office.
+  const aiRecipientId = result ? suggestedRecipientId(kind, result.route.ward, result.route.department.name) : '';
+  const aiRecipient = findRecipient(aiRecipientId);
+  const ccList = escalationCc(kind, recipientId, result?.route.city ?? '');
   const [loc, setLoc] = useState<DetectedLocation | null>(null);
   const [locating, setLocating] = useState(false);
   const [noticeSent, setNoticeSent] = useState(false);
@@ -341,7 +341,9 @@ function ReportContent() {
       }
       setStep(STAGES.length); // mark every stage complete
       setNoticeSent(false);
-      setRecipientId(defaultRecipientId(data.route.department.name));
+      setRecipientId(suggestedRecipientId(
+        problemKind(data.route.city, data.analysis.category), data.route.ward, data.route.department.name,
+      ));
       setResult(data);
       setPhase('done');
       // Remember the confirmed location so the leaderboard can default to "My Ward".
