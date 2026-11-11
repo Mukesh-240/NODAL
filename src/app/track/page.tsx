@@ -29,6 +29,32 @@ interface TrackedIssue {
   department: string;
   created_at: string;
   resolved_at: string | null;
+  image_url?: string;
+}
+
+// Lifecycle shown as a timeline: in_progress means the notice was sent.
+const STEPS: { status: IssueStatus; label: string }[] = [
+  { status: 'open', label: 'Reported' },
+  { status: 'in_progress', label: 'Notice sent' },
+  { status: 'resolved', label: 'Resolved' },
+];
+
+function Timeline({ status }: { status: IssueStatus }) {
+  const reached = STEPS.findIndex((s) => s.status === status);
+  return (
+    <ol className="flex items-center gap-1 mb-lg" aria-label="Report progress">
+      {STEPS.map((s, i) => (
+        <li key={s.status} className="flex-1 flex flex-col items-center gap-1">
+          <span
+            className={`w-full h-1.5 rounded-full ${i <= reached ? 'bg-emerald-500' : 'bg-surface-variant'}`}
+          />
+          <span className={`font-body-md text-[11px] ${i <= reached ? 'text-primary font-semibold' : 'text-on-surface-variant'}`}>
+            {i <= reached ? '✅ ' : ''}{s.label}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 function TrackContent() {
@@ -166,7 +192,7 @@ function TrackContent() {
         <header className="mb-xl">
           <h1 className="font-headline-lg text-headline-lg text-primary tracking-tighter">Track a Report</h1>
           <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
-            Enter your tracking code to see the latest status.
+            Paste your tracking code to see the photo, status, who it was sent to, and how long it has been open.
           </p>
         </header>
 
@@ -177,7 +203,10 @@ function TrackContent() {
           <input
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="e.g. NDL-CHN-12345"
+            placeholder="e.g. NDL-HOST-MH-B-1111-K7QP-X9"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
             className="flex-1 h-12 px-md rounded-full bg-surface hairline-all text-primary uppercase tracking-wide font-stats-tabular text-stats-tabular placeholder:text-on-surface-variant placeholder:normal-case focus:outline-none focus:border-primary transition-colors"
           />
           <button
@@ -212,6 +241,17 @@ function TrackContent() {
               </div>
               <StatusPill status={issue.status} />
             </div>
+
+            <Timeline status={issue.status} />
+
+            {issue.image_url && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={issue.image_url}
+                alt="Photo of the reported problem"
+                className="w-full max-h-72 object-cover rounded-xl hairline-all mb-md"
+              />
+            )}
 
             {/* Notify-me: status advanced since the student last looked */}
             {advanced && (

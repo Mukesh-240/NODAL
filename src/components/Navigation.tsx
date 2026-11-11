@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 // Bottom nav. Emoji-only tabs (no icon-font dependency); active tab = pill.
 const TABS = [
   { href: '/', label: 'Home', icon: '🏠' },
+  { href: '/track', label: 'Track', icon: '🔎' },
   { href: '/community', label: 'Community', icon: '👥' },
   { href: '/my-reports', label: 'My Reports', icon: '📋' },
   { href: '/profile', label: 'Profile', icon: '👤' },

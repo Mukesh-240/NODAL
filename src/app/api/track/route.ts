@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
         department: issue.department,
         created_at: issue.created_at,
         resolved_at: issue.resolved_at,
+        image_url: issue.image_url, // public bucket — same photo the Community board shows
       }
     });
   } catch (err) {
