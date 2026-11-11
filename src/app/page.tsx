@@ -17,7 +17,7 @@ import {
 import { getSession } from '@/lib/session';
 import { detectCityFromGPS, cityCenter } from '@/lib/routingMatrix';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { RECIPIENT_GROUPS, findRecipient, defaultRecipientId } from '@/lib/recipientGroups';
+import { RECIPIENT_GROUPS, findRecipient, defaultRecipientId, escalationCc, problemKind, PROBLEM_KIND_LABEL } from '@/lib/recipientGroups';
 
 const CITIES: SupportedCity[] = [
   "Men's Hostels (MH)",
@@ -63,12 +63,18 @@ const WARD_LIST: Record<string, string[]> = {
   ],
 };
 
-// Footer appended to the notice the student sends: who it is addressed to.
-function copiesFooter(toRole: string): string {
+// Sign-off appended to every notice, so it always carries the student's name and Reg. No.
+function signature(name: string, regNo: string): string {
   return `
 
-— Addressed to: ${toRole}`;
+Yours sincerely,
+${name}
+Reg. No.: ${regNo}
+VIT-AP University`;
 }
+
+// VIT-AP registration numbers look like 23BCE7001 / 25MIC7201.
+const REG_NO_RE = /^d{2}[A-Z]{3}d{4,5}$/;
 
 // Downscale to keep base64 under the API's 10MB cap and speed up upload.
 // ponytail: fixed 1280px longest edge; expose a setting only if quality complaints come in.
@@ -230,6 +236,11 @@ function ReportContent() {
   // The recipient the router (driven by the AI's category) picked for this report.
   const aiRecipientId = result ? defaultRecipientId(result.route.department.name) : '';
   const aiRecipient = findRecipient(aiRecipientId);
+  // Escalation copies depend on the kind of problem (Registrar is always last).
+  const kind = result ? problemKind(result.route.city, result.analysis.category) : 'campus';
+  const ccList = escalationCc(kind, recipientId);
+  const regValid = REG_NO_RE.test(regNo.trim().toUpperCase());
+  const identityOk = studentName.trim().length >= 2 && regValid;
   const [loc, setLoc] = useState<DetectedLocation | null>(null);
   const [locating, setLocating] = useState(false);
   const [noticeSent, setNoticeSent] = useState(false);
@@ -291,7 +302,7 @@ function ReportContent() {
   }
 
   async function submit() {
-    if (!file || !loc || !loc.city || !loc.ward.trim() || problem.trim().length < MIN_PROBLEM_CHARS) return;
+    if (!file || !loc || !loc.city || !loc.ward.trim() || problem.trim().length < MIN_PROBLEM_CHARS || !identityOk) return;
     // Guard oversize video before encoding (server enforces the same limit).
     if (file.type.startsWith('video/') && file.size > 15 * 1024 * 1024) {
       setError('Video must be under 15MB. Please use a shorter or lower-resolution clip.');
@@ -326,7 +337,7 @@ function ReportContent() {
           frameBase64,
           gpsLat: lat,
           gpsLng: lng,
-          citizenName: name ? (reg ? `${name} (${reg})` : name) : reg || undefined,
+          citizenName: `${name} (${reg})`,
           problemDescription: problem.trim(),
           reporterSession: getSession(),
           cityOverride: loc.city,
@@ -365,7 +376,7 @@ function ReportContent() {
   // Send target = the recipient the student picked (nothing is sent until they
   // press Send in their own mail app).
   function chainTargets() {
-    return { to: selectedRecipient?.email ?? '', cc: [] as string[] };
+    return { to: selectedRecipient?.email ?? '', cc: ccList.map((c) => c.email) };
   }
 
   // Save the uploaded photo to the device so the citizen can attach it in Gmail
@@ -384,7 +395,7 @@ function ReportContent() {
 
   function copyNotice() {
     if (!result) return;
-    const text = `Subject: ${result.dispatch.subject}\n\n${result.dispatch.emailNotice}${copiesFooter(selectedRecipient?.label ?? result.route.department.name)}`;
+    const text = `Subject: ${result.dispatch.subject}\n\n${result.dispatch.emailNotice}${signature(studentName.trim(), regNo.trim().toUpperCase())}`;
     navigator.clipboard?.writeText(text).then(
       () => { setCopied(true); setTimeout(() => setCopied(false), 2000); },
       () => {},
@@ -395,7 +406,7 @@ function ReportContent() {
     if (!result) return;
     const { to, cc } = chainTargets();
     const su = result.dispatch.subject;
-    const body = result.dispatch.emailNotice + copiesFooter(selectedRecipient?.label ?? result.route.department.name);
+    const body = result.dispatch.emailNotice + signature(studentName.trim(), regNo.trim().toUpperCase());
     if (!to) {
       console.warn('[gmail] No department email on route — cannot prefill recipient.', result.route);
     }
@@ -435,7 +446,7 @@ function ReportContent() {
   function mailtoLink(): string {
     if (!result) return '#';
     const { to, cc } = chainTargets();
-    const body = result.dispatch.emailNotice + copiesFooter(selectedRecipient?.label ?? result.route.department.name);
+    const body = result.dispatch.emailNotice + signature(studentName.trim(), regNo.trim().toUpperCase());
     const ccParam = cc.length ? `&cc=${encodeURIComponent(cc.join(','))}` : '';
     return `mailto:${to}?subject=${encodeURIComponent(result.dispatch.subject)}${ccParam}&body=${encodeURIComponent(body)}`;
   }
@@ -595,13 +606,14 @@ function ReportContent() {
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={previewUrl} alt="preview" className="w-full rounded-xl mb-md object-cover max-h-96 hairline-all" />
             )}
+            <p className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-1">Your details · signed on the email</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-sm mb-md">
               <input
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
                 maxLength={80}
                 autoComplete="name"
-                placeholder="Your name (optional)"
+                placeholder="Full name"
                 className="h-12 px-md rounded-xl bg-surface hairline-all text-primary font-body-md text-[14px] focus:outline-none focus:border-primary"
               />
               <input
@@ -609,10 +621,13 @@ function ReportContent() {
                 onChange={(e) => setRegNo(e.target.value)}
                 maxLength={20}
                 autoCapitalize="characters"
-                placeholder="Reg no. e.g. 23BCE7001"
+                placeholder="Reg. No. e.g. 23BCE7001"
                 className="h-12 px-md rounded-xl bg-surface hairline-all text-primary font-body-md text-[14px] uppercase placeholder:normal-case focus:outline-none focus:border-primary"
               />
             </div>
+            {regNo.trim() && !regValid && (
+              <p className="font-body-md text-[12px] text-error -mt-sm mb-md">Enter a valid Reg. No., e.g. 23BCE7001</p>
+            )}
             <div className="flex gap-sm">
               <button
                 onClick={reset}
@@ -622,7 +637,7 @@ function ReportContent() {
               </button>
               <button
                 onClick={detectLocation}
-                disabled={locating}
+                disabled={locating || !identityOk}
                 className="flex-1 h-12 rounded-full bg-primary text-on-primary font-headline-md text-[15px] flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98] transition-transform"
               >
                 {locating ? (
@@ -869,10 +884,10 @@ function ReportContent() {
                   <p className="font-body-md text-[12px] text-on-surface-variant mt-2 break-words">
                     <strong className="text-primary">To:</strong>{' '}
                     <span className="font-stats-tabular">{result.chain.to.intendedEmail || result.chain.to.role}</span>
-                    {result.chain.cc.length > 0 && (
+                    {ccList.length > 0 && (
                       <>
                         {' · '}
-                        <strong className="text-primary">Cc:</strong> {result.chain.cc.map((c) => c.role).join(', ')}
+                        <strong className="text-primary">Cc:</strong> {ccList.map((c) => c.label.split(' (')[0]).join(' → ')}
                       </>
                     )}
                   </p>
@@ -1097,7 +1112,7 @@ function ReportContent() {
               </div>
               <div className="bg-surface hairline-all rounded-xl p-md max-h-72 overflow-y-auto">
                 <p className="font-stats-tabular text-[11px] text-on-surface-variant mb-sm">Subject: {result.dispatch.subject}</p>
-                <p className="font-body-md text-[12px] text-primary whitespace-pre-wrap leading-relaxed">{result.dispatch.emailNotice}</p>
+                <p className="font-body-md text-[12px] text-primary whitespace-pre-wrap leading-relaxed">{result.dispatch.emailNotice + signature(studentName.trim(), regNo.trim().toUpperCase())}</p>
               </div>
             </div>
 
@@ -1149,6 +1164,18 @@ function ReportContent() {
                   ? <>To: <span className="font-stats-tabular text-primary">{selectedRecipient.email}</span></>
                   : 'Pick a recipient to open the email.'}
               </p>
+                {ccList.length > 0 && (
+                  <div className="mt-2 pt-2 hairline-t">
+                    <p className="font-label-caps text-label-caps uppercase text-on-surface-variant">Cc · {PROBLEM_KIND_LABEL[kind]} escalation</p>
+                    <ol className="mt-1 flex flex-col gap-0.5">
+                      {ccList.map((c, n) => (
+                        <li key={c.id} className="font-body-md text-[12px] text-on-surface-variant break-all">
+                          {n + 1}. <strong className="text-primary">{c.label}</strong>{n === ccList.length - 1 ? ' (final)' : ''} · <span className="font-stats-tabular">{c.email}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
             </div>
 
             {/* Primary action: the student sends the notice from their own Gmail */}

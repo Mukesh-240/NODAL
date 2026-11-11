@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sanitizeForLogging } from '@/lib/logger';
-import { analyzeImage, draftDispatch, validateImageInput, buildLegalFooter, selectApplicableLegalActs, selectLegalActsWithGemini, isVideoMime } from '@/lib/gemini';
+import { analyzeImage, draftDispatch, validateImageInput, shortSubject, fallbackNotice, selectApplicableLegalActs, selectLegalActsWithGemini, isVideoMime } from '@/lib/gemini';
 import { routeIssue, generateTrackingCode, isInIndia } from '@/lib/routingMatrix';
 import { buildDispatchChain } from '@/lib/recipients';
 import { insertIssue, uploadIssueImage, upsertCivicUser, detectPattern } from '@/lib/supabase';
@@ -41,7 +41,8 @@ const AnalyzeRequestSchema = z.object({
     .email('Invalid email')
     .max(254, 'Email too long')
     .optional(),
-  citizenName: z.string().max(120, 'Name too long').optional(),
+  // "Name (REGNO)" — required: every letter is signed by the student.
+  citizenName: z.string().trim().min(3, 'Name and registration number are required').max(120, 'Name too long'),
   // The student's own account of the problem — drives the analysis context and the letter.
   problemDescription: z.string().trim().min(10, 'Please describe the problem').max(600, 'Description too long'),
   reporterSession: z.string().uuid('Invalid session ID'),
@@ -329,6 +330,7 @@ export async function POST(request: NextRequest) {
       reportedAt: new Date().toISOString(),
       legalHint,
       problemDescription,
+      studentName: citizenName,
     });
     logTool('draft_dispatch', 'done', Date.now() - t3);
   } catch (err) {
@@ -336,8 +338,8 @@ export async function POST(request: NextRequest) {
     console.error('[draft_dispatch] Error:', err);
     // Non-fatal: generate a basic dispatch if Gemini fails here
     dispatch = {
-      subject: `Urgent Remedial Action Required for Civic Issue in ${route.ward}, ${route.city}`,
-      emailNotice: `A civic issue (${analysis.category}) has been reported at ${route.ward}, ${route.city} with severity ${analysis.severity}/10. Please investigate and take necessary remedial action within ${route.department.avgResolutionDays} working days.${buildLegalFooter(analysis, route, trackingCode)}`,
+      subject: shortSubject(analysis, route),
+      emailNotice: fallbackNotice(analysis, route, trackingCode, citizenName),
       rtiApplication: `RTI Request under Section 6(1) regarding the civic issue reported at ${route.ward}, ${route.city} (RESOLVEX Tracking Ref: ${trackingCode}). Please provide the status of contract work, budget, and engineers assigned for this street.`,
       rpwdComplaint: analysis.rpwdViolation
         ? `RPWD Act 2016 Section 40 accessibility grievance regarding the barrier reported at ${route.ward}, ${route.city} (RESOLVEX Tracking Ref: ${trackingCode}). Under the law, the authority has a 30-day statutory response deadline.`

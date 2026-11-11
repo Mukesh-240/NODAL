@@ -139,10 +139,26 @@ export const VIT_AP_DIRECTORY = {
     avgResolutionDays: 3,
   },
   registrarOffice: {
-    name: 'Registrar Office — VIT-AP',
+    name: 'Registrar (Dr. Jagadish Chandra Mudiganti)',
     email: 'registrar.office@vitap.ac.in',
     phone: '0863-2370400',
     avgResolutionDays: 3,
+  },
+
+  // University leadership — escalation copies (cc), never the first recipient.
+  // vc.secretary@ is from the official vitap.ac.in leadership page; chancellor@vit.ac.in
+  // is the VIT group Chancellor's office — confirm both before going live.
+  viceChancellor: {
+    name: 'Vice Chancellor (Dr. P. Arulmozhivarman, I/c)',
+    email: 'vc.secretary@vitap.ac.in',
+    phone: '0863-2370400',
+    avgResolutionDays: 3,
+  },
+  chancellor: {
+    name: 'Chancellor (Dr. G. Viswanathan)',
+    email: 'chancellor@vit.ac.in',
+    phone: '0863-2370400',
+    avgResolutionDays: 5,
   },
 };
 

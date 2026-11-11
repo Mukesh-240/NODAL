@@ -126,6 +126,7 @@ export interface DraftDispatchInput {
   reportedAt: string;
   legalHint?: string;         // AI-selected applicable statutes to weave into the prose
   problemDescription?: string; // the student's own words — primary account in the letter
+  studentName?: string;        // "Name (REGNO)" — introduced in the letter's first line
 }
 
 export interface DraftDispatchOutput {
